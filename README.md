@@ -1,349 +1,325 @@
-# 🚀 Pi Zero WebRTC Camera Streaming
+# 🚀 Pi WebRTC Camera Streaming
 
-Ultra-low latency WebRTC video streaming solution optimized for Raspberry Pi Zero. This project provides real-time camera streaming with adaptive quality, performance monitoring, and extensive optimization for resource-constrained devices.
+Ultra-low latency WebRTC video streaming solution optimized for all Raspberry Pi models. Stream your Pi camera to any web browser with minimal delay and professional features.
 
-## ✨ Features
+## ✨ Key Features
 
-- **Ultra-Low Latency**: Optimized for minimal delay (typically <100ms on local network)
-- **Adaptive Quality**: Automatically adjusts video quality based on device performance
-- **Resource Efficient**: Specifically optimized for Raspberry Pi Zero's limited resources
-- **Web-Based Client**: No additional software needed - just open a browser
-- **Performance Monitoring**: Real-time stats and system monitoring
-- **Configurable**: Easy configuration through config files
-- **Multiple Connections**: Support for multiple simultaneous viewers
+- **Ultra-Low Latency**: <100ms on local network
+- **Universal Pi Support**: Zero W through Pi 5
+- **Web-Based**: No client software needed
+- **Adaptive Quality**: Automatically optimizes for your hardware
+- **Multiple Deployment Options**: Native Python or Docker
+- **Professional Monitoring**: Real-time performance stats
 
-## 📋 Requirements
+## 📋 Hardware Requirements
 
-- **Raspberry Pi Models**: Pi Zero W, Pi Zero 2 W, Pi 3, Pi 4, Pi 5 (any Pi with camera support)
-- **Camera**: Raspberry Pi Camera Module (v1, v2, v3, or HQ camera)
-- **Storage**: MicroSD card (16GB+ recommended, Class 10 or better)
-- **Network**: WiFi or Ethernet connection
+| Component | Requirement |
+|-----------|-------------|
+| **Pi Models** | Pi Zero W, Zero 2 W, Pi 3/4/5 |
+| **Camera** | Pi Camera Module (v1/v2/v3/HQ) |
+| **Storage** | 16GB+ MicroSD (Class 10+) |
+| **Network** | WiFi or Ethernet |
 
-### Supported Hardware
-| Model | Status | Max Resolution | Expected FPS | Concurrent Viewers |
-|-------|--------|---------------|--------------|-------------------|
-| Pi Zero W | ✅ Optimized | 640x480 | 15-20 | 2-3 |
-| Pi Zero 2 W | ✅ Great | 1280x720 | 25-30 | 3-5 |
-| Pi 3 B/B+ | ✅ Supported | 1280x720 | 25-30 | 3-5 |
-| Pi 4 | ✅ Excellent | 1920x1080 | 30+ | 5-10 |
-| Pi 5 | ✅ Excellent | 1920x1080+ | 30+ | 10+ |
+### Expected Performance
+
+| Model | Resolution | FPS | Viewers | CPU Usage |
+|-------|------------|-----|---------|-----------|
+| Pi Zero W | 640x480 | 15-20 | 2-3 | 60-80% |
+| Pi Zero 2 W | 1280x720 | 25-30 | 3-5 | 40-60% |
+| Pi 3 B/B+ | 1280x720 | 25-30 | 3-5 | 40-60% |
+| Pi 4 | 1920x1080 | 30+ | 5-10 | 20-40% |
+| Pi 5 | 1920x1080+ | 30+ | 10+ | 15-30% |
+
+---
 
 ## 🚀 Quick Start
 
-### 1. Automatic Installation
-
-Run the installation script to set up everything automatically:
+### Option 1: Automatic Setup (Recommended)
 
 ```bash
+# Download and run the installer
 chmod +x install.sh
 ./install.sh
+
+# Reboot to apply camera settings
+sudo reboot
+
+# Start streaming
+./start_stream.sh
 ```
 
-The script will:
-- Update your system
-- Install all required packages
-- Configure the camera
-- Set up Python environment
-- Create systemd service
-- Apply performance optimizations
-
-### 2. Manual Installation
-
-If you prefer manual setup:
+### Option 2: Docker Deployment
 
 ```bash
-# Update system
-sudo apt-get update && sudo apt-get upgrade -y
+# Start with Docker Compose
+docker-compose up --build -d
 
-# Install system dependencies
-sudo apt-get install -y python3 python3-pip python3-venv git
-
-# Clone/download project files
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install Python packages
-pip install -r requirements.txt
-
-# Enable camera
-sudo raspi-config nonint do_camera 0
+# View logs
+docker-compose logs -f
 ```
 
-### 3. Configuration
+### Accessing Your Stream
 
-Edit `config.ini` to customize settings:
+1. Find your Pi's IP: `hostname -I`
+2. Open browser: `http://[PI_IP]:8080`
+3. Click "Start Stream"
 
-```ini
-[camera]
-width = 640          # Video width (lower = better performance)
-height = 480         # Video height
-fps = 20            # Frame rate (lower = better performance)
-
-[encoding]
-bitrate = 500000    # Bitrate in bps (adjust for network)
-
-[network]
-port = 8080         # Server port
-```
-
-### 4. Running the Server
-
-#### Option A: Direct Run
-```bash
-source venv/bin/activate
-python webrtc_server.py
-```
-
-#### Option B: Enhanced Server
-```bash
-source venv/bin/activate
-python enhanced_server.py
-```
-
-#### Option C: System Service
-```bash
-sudo systemctl start webrtc-camera.service
-sudo systemctl enable webrtc-camera.service  # Auto-start on boot
-```
-
-### 5. Accessing the Stream
-
-1. Find your Pi's IP address: `hostname -I`
-2. Open a web browser and go to: `http://[PI_IP]:8080`
-3. Click "Start Stream" to begin streaming
+---
 
 ## 📊 Performance Optimization
 
-### For Pi Zero W:
-- **Resolution**: 640x480 or lower
-- **FPS**: 15-20 for best performance
-- **Bitrate**: 200-500 kbps
-- **Buffer Size**: 1 (minimal latency)
+### Pi Zero W Settings
+```ini
+Resolution: 640x480
+Frame Rate: 15-20 fps
+Bitrate: 300-500 kbps
+Profile: Baseline H.264
+```
 
-### For Pi Zero 2 W:
-- **Resolution**: 1280x720 (720p)
-- **FPS**: 25-30
-- **Bitrate**: 600-1200 kbps
-- **Buffer Size**: 1-2
+### Pi Zero 2 W Settings
+```ini
+Resolution: 1280x720
+Frame Rate: 25-30 fps  
+Bitrate: 600-1200 kbps
+Profile: Main H.264
+```
 
-### For Pi 3 B/B+:
-- **Resolution**: 1280x720 (720p)
-- **FPS**: 25-30
-- **Bitrate**: 800-1500 kbps
-- **Buffer Size**: 1-2
+### Pi 4/5 Settings
+```ini
+Resolution: 1920x1080
+Frame Rate: 30+ fps
+Bitrate: 1-5 Mbps
+Profile: High H.264
+```
 
-### For Pi 4:
-- **Resolution**: Up to 1920x1080 (1080p)
-- **FPS**: 30
-- **Bitrate**: 1-3 Mbps
-- **Buffer Size**: 1-2
+---
 
-### For Pi 5:
-- **Resolution**: Up to 1920x1080+ (1080p+)
-- **FPS**: 30+
-- **Bitrate**: 2-5 Mbps
-- **Buffer Size**: 1-2
+## 🛠️ Configuration
 
-### Model-Specific Features
-- **Pi Zero W**: Basic streaming with aggressive optimizations
-- **Pi Zero 2 W**: Stable 720p streaming with good performance
-- **Pi 3**: Stable 720p streaming with moderate CPU usage
-- **Pi 4**: Full 1080p streaming with hardware acceleration
-- **Pi 5**: Enhanced performance with potential for 4K (depending on camera)
+### Interactive Configuration Wizard
+```bash
+python3 configure.py
+```
 
-## 🛠️ Configuration Options
-
-### Camera Settings
+### Manual Configuration (`config.ini`)
 ```ini
 [camera]
-device_index = 0      # Camera device (/dev/video0)
-width = 640          # Video width in pixels
-height = 480         # Video height in pixels
-fps = 20             # Target frame rate
-buffer_size = 1      # Camera buffer size (1 = low latency)
-```
+width = 640
+height = 480
+fps = 20
+buffer_size = 1
 
-### Encoding Settings
-```ini
 [encoding]
-bitrate = 500000         # Target bitrate in bits/second
-h264_profile = baseline  # H.264 profile (baseline/main/high)
-keyframe_interval = 2    # Keyframe interval in seconds
-```
+bitrate = 500000
+h264_profile = baseline
 
-### Performance Settings
-```ini
+[network]
+port = 8080
+max_connections = 3
+
 [performance]
-use_gpu_acceleration = true    # Use GPU acceleration if available
-video_threads = 2             # Number of video processing threads
-low_latency_mode = true       # Enable low-latency optimizations
-frame_drop_strategy = smart   # Frame dropping strategy
+low_latency_mode = true
+video_threads = 2
 ```
 
-## 📈 Monitoring
+---
 
-The enhanced server provides real-time monitoring:
+## 🐳 Docker Deployment
 
-- **Connection Stats**: State, uptime, ICE status
-- **Video Stats**: Frame rate, resolution, bitrate
-- **Network Stats**: Bandwidth, packet loss, jitter
-- **System Stats**: CPU usage, memory, temperature
+### Quick Start
+```bash
+docker-compose up --build -d
+```
 
-Access stats at: `http://[PI_IP]:8080/stats`
+### Manual Docker Commands
+```bash
+# Build image
+docker build -t webrtc-camera .
+
+# Run container
+docker run -d \
+  --name webrtc-camera \
+  -p 8080:8080 \
+  --device /dev/video0:/dev/video0 \
+  --privileged \
+  webrtc-camera
+```
+
+### Docker Management
+```bash
+# View logs
+docker-compose logs -f
+
+# Stop container
+docker-compose down
+
+# Restart
+docker-compose restart
+```
+
+---
+
+## 📈 Monitoring & Management
+
+### System Status
+```bash
+./status.sh                    # Complete system diagnostics
+./performance_test.py          # Benchmark your setup
+```
+
+### Service Management
+```bash
+# Start/stop service
+sudo systemctl start webrtc-camera.service
+sudo systemctl stop webrtc-camera.service
+
+# Enable auto-start
+sudo systemctl enable webrtc-camera.service
+
+# View logs
+sudo journalctl -u webrtc-camera.service -f
+```
+
+### Real-time Stats
+Access monitoring dashboard: `http://[PI_IP]:8080/stats`
+
+---
 
 ## 🔧 Troubleshooting
 
-### Camera Not Detected
+### Camera Issues
 ```bash
-# Check camera connection
+# Test camera
 vcgencmd get_camera
-
-# Test camera manually
 raspistill -o test.jpg
 
 # Check video devices
 ls /dev/video*
 ```
 
-### Poor Performance
-1. Lower resolution in `config.ini`
-2. Reduce frame rate
-3. Lower bitrate
-4. Enable low-latency mode
-5. Check CPU temperature: `vcgencmd measure_temp`
+### Performance Issues
+1. **Lower resolution** in config.ini
+2. **Reduce frame rate**
+3. **Check temperature**: `vcgencmd measure_temp`
+4. **Monitor CPU**: `top`
 
-### Connection Issues
+### Network Issues
 ```bash
-# Check if service is running
-sudo systemctl status webrtc-camera.service
-
-# View logs
-sudo journalctl -u webrtc-camera.service -f
-
-# Check port availability
+# Check server status
 sudo netstat -tlnp | grep 8080
+
+# Verify firewall
+sudo ufw status
 ```
 
-### High CPU Usage
-1. Reduce video resolution
-2. Lower frame rate
-3. Use baseline H.264 profile
-4. Enable frame dropping
-5. Check temperature throttling
+---
 
-## 📱 Client Features
+## 🎯 Use Cases
 
-### Web Interface
-- **Start/Stop Streaming**: Easy control buttons
-- **Fullscreen Mode**: Immersive viewing experience
-- **Real-time Stats**: Performance monitoring
-- **Responsive Design**: Works on mobile devices
+- **Home Security**: Remote monitoring
+- **Pet Watching**: Keep an eye on pets
+- **Workshop Monitoring**: 3D printer observation
+- **Wildlife Camera**: Nature observation
+- **Baby Monitor**: Child monitoring
+- **Live Streaming**: Broadcast to web
 
-### Keyboard Shortcuts
-- `F` - Toggle fullscreen
-- `S` - Start/stop stream
-- `Esc` - Exit fullscreen
+---
 
-## 🚦 Service Management
+## 📚 Advanced Features
 
-```bash
-# Start service
-sudo systemctl start webrtc-camera.service
+### Multiple Camera Support
+Run multiple instances on different ports for multiple cameras.
 
-# Stop service
-sudo systemctl stop webrtc-camera.service
-
-# Enable auto-start
-sudo systemctl enable webrtc-camera.service
-
-# Check status
-sudo systemctl status webrtc-camera.service
-
-# View logs
-sudo journalctl -u webrtc-camera.service -f
+### Custom STUN/TURN Servers
+```ini
+[network]
+ice_servers = [
+    {"urls": "stun:your-server.com:3478"},
+    {"urls": "turn:your-server.com:3478", "username": "user", "credential": "pass"}
+]
 ```
 
-## 🔒 Security Considerations
+### Home Assistant Integration
+REST API endpoints available for automation systems.
 
-1. **Network Access**: Server binds to all interfaces (0.0.0.0)
-2. **Firewall**: Consider restricting access to specific IPs
-3. **HTTPS**: For production, use HTTPS with proper certificates
-4. **Authentication**: Add authentication for public deployments
+---
 
-### Enable Firewall
+## 🔒 Security Notes
+
+- Server binds to all interfaces (0.0.0.0)
+- Consider firewall rules for public access
+- Use HTTPS in production environments
+- Add authentication for internet-facing deployments
+
+### Basic Firewall Setup
 ```bash
 sudo ufw enable
 sudo ufw allow 8080/tcp
 sudo ufw allow ssh
 ```
 
-## 🎯 Use Cases
+---
 
-- **Home Security**: Monitor your home remotely
-- **Pet Monitoring**: Keep an eye on pets
-- **Baby Monitor**: Watch over children
-- **Workshop Monitoring**: Monitor 3D printers, etc.
-- **Garden Monitoring**: Time-lapse photography
-- **Wildlife Observation**: Remote wildlife watching
+## 📦 Project Structure
 
-## 🐛 Known Issues
-
-1. **First Boot**: May take 10-15 minutes for initial compilation on Pi Zero
-2. **Memory Usage**: Long sessions may require periodic restart
-3. **Heat**: Ensure adequate cooling for continuous operation
-4. **WiFi Stability**: Use 5GHz WiFi when possible for better performance
-
-## 📚 Advanced Usage
-
-### Custom STUN/TURN Servers
-Edit `config.ini`:
-```ini
-[network]
-ice_servers = [
-    {"urls": "stun:your-stun-server.com:3478"},
-    {"urls": "turn:your-turn-server.com:3478", "username": "user", "credential": "pass"}
-]
+```
+twistedcamera/
+├── 📄 Core Servers
+│   ├── webrtc_server.py       # Basic streaming server
+│   ├── enhanced_server.py     # Advanced server with monitoring
+│   └── config.ini            # Configuration settings
+│
+├── �️ Setup & Management  
+│   ├── install.sh            # Automated installation
+│   ├── configure.py          # Configuration wizard
+│   ├── start_stream.sh       # Start streaming
+│   ├── stop_stream.sh        # Stop streaming
+│   ├── status.sh             # System diagnostics
+│   └── performance_test.py   # Performance testing
+│
+├── 🐳 Docker
+│   ├── Dockerfile           # Container configuration
+│   └── docker-compose.yml   # Orchestration setup
+│
+└── 📚 Documentation
+    ├── README.md            # This guide
+    └── OS_RECOMMENDATIONS.md # OS selection guide
 ```
 
-### Multiple Camera Support
-Create separate config files and run multiple instances on different ports.
+---
 
-### Integration with Home Assistant
-The server provides a REST API that can be integrated with home automation systems.
+## 💡 Pro Tips
 
-## 🤝 Contributing
+1. **Use Pi OS Lite** for headless operation
+2. **Position Pi near router** for strong WiFi signal  
+3. **Use fast MicroSD card** (Class 10+)
+4. **Monitor temperature** during extended use
+5. **Consider Pi Zero 2 W** for best price/performance
 
+---
+
+## 🤝 Support & Contributing
+
+### Getting Help
+1. Check troubleshooting section
+2. Review system logs with `./status.sh`
+3. Test with default configuration
+4. Monitor system resources
+
+### Contributing
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test on actual Pi Zero hardware
-5. Submit a pull request
+2. Test on actual Pi hardware
+3. Submit pull requests
+
+---
 
 ## 📄 License
 
 This project is open source. Feel free to modify and distribute.
 
-## 💡 Tips for Best Performance
+---
 
-1. **Use wired connection** when possible for setup
-2. **Position Pi close to router** for strong WiFi signal
-3. **Use fast MicroSD card** (Class 10 or better)
-4. **Monitor temperature** and add cooling if needed
-5. **Close unnecessary services** to free up resources
-6. **Use 5GHz WiFi** if your Pi supports it
-
-## 📞 Support
-
-If you encounter issues:
-
-1. Check the troubleshooting section
-2. Review system logs
-3. Test with default configuration
-4. Monitor system resources
-5. Verify camera hardware
-
-Happy streaming! 🎥
+**Ready to start streaming?** Run `./install.sh` and you'll be up and running in minutes! 🎥
 
 ---
 
