@@ -84,13 +84,23 @@ sudo apt-get install -y \
 
 print_section "Camera Configuration"
 
-# Enable camera module
-print_status "Enabling camera module..."
+# Enable camera module - prioritize new camera support
+print_status "Configuring camera module..."
+
+# For new cameras (Camera Module 3+), use camera_auto_detect
+if ! grep -q "camera_auto_detect=1" /boot/config.txt; then
+    echo "camera_auto_detect=1" | sudo tee -a /boot/config.txt
+    print_status "Camera auto-detect enabled (recommended for new cameras)"
+else
+    print_status "Camera auto-detect already enabled"
+fi
+
+# Legacy camera support
 if ! grep -q "start_x=1" /boot/config.txt; then
     echo "start_x=1" | sudo tee -a /boot/config.txt
-    print_status "Camera module enabled in config.txt"
+    print_status "Legacy camera support enabled"
 else
-    print_status "Camera module already enabled"
+    print_status "Legacy camera support already enabled"
 fi
 
 # Set GPU memory split for camera
@@ -105,6 +115,10 @@ fi
 # Enable camera interface
 print_status "Enabling camera interface..."
 sudo raspi-config nonint do_camera 0
+
+# Install libcamera tools for new camera support
+print_status "Installing libcamera tools for new camera modules..."
+sudo apt-get install -y libcamera-apps libcamera-dev
 
 print_section "Python Environment Setup"
 
