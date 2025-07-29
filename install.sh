@@ -123,19 +123,19 @@ print_section "Installing Python Dependencies"
 print_status "Creating requirements.txt..."
 cat > requirements.txt << 'EOF'
 # Core WebRTC and media processing
-aiortc==1.6.0
-aiohttp==3.9.1
-opencv-python==4.8.1.78
-numpy==1.24.3
-av==10.0.0
+aiortc>=1.6.0
+aiohttp>=3.9.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+av>=10.0.0
 
 # Additional utilities
-psutil==5.9.6
-uvloop==0.19.0
+psutil>=5.9.0
+uvloop>=0.19.0
 
-# For better performance on ARM
-cffi==1.16.0
-cryptography==41.0.8
+# System dependencies (let pip choose compatible versions)
+cffi
+cryptography
 EOF
 
 # Install Python packages
