@@ -529,7 +529,7 @@ class WebRTCServer:
 </head>
 <body>
     <div class="container">
-        <h1>🚀 Pi Zero WebRTC Stream</h1>
+        <h1>Pi Zero WebRTC Stream</h1>
         
         <div class="controls">
             <button id="startBtn" onclick="start()">Start Stream</button>

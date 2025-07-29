@@ -99,11 +99,11 @@ def create_config(settings):
     with open('config.ini', 'w') as f:
         config.write(f)
     
-    print("✅ Configuration saved to config.ini")
+    print("Configuration saved to config.ini")
 
 def main():
     """Main configuration wizard."""
-    print("🔧 WebRTC Camera Configuration Wizard")
+    print("WebRTC Camera Configuration Wizard")
     print("=====================================")
     
     # Detect hardware
@@ -111,14 +111,14 @@ def main():
     memory_gb = get_memory_info()
     camera_available = test_camera()
     
-    print(f"\n🖥️  Detected hardware:")
+    print(f"\nDetected hardware:")
     print(f"   Device: {pi_model}")
     if memory_gb:
         print(f"   Memory: {memory_gb:.1f}GB")
-    print(f"   Camera: {'✅ Available' if camera_available else '❌ Not available'}")
+    print(f"   Camera: {'Available' if camera_available else 'Not available'}")
     
     if not camera_available:
-        print("\n⚠️  Camera not detected! Please check:")
+        print("\nCamera not detected! Please check:")
         print("   - Camera is properly connected")
         print("   - Camera is enabled in raspi-config")
         print("   - No other processes are using the camera")
@@ -214,7 +214,7 @@ def main():
     
     # Advanced configuration
     if advanced:
-        print(f"\n🔧 Advanced Settings:")
+        print(f"\nAdvanced Settings:")
         
         try:
             width = int(input(f"Video width [{settings['width']}]: ") or settings['width'])
@@ -228,10 +228,10 @@ def main():
                 'bitrate': bitrate, 'port': port
             })
         except ValueError:
-            print("⚠️  Invalid input, using defaults")
+            print("Invalid input, using defaults")
     
     # Show final configuration
-    print(f"\n📋 Final Configuration:")
+    print(f"\nFinal Configuration:")
     print(f"   Resolution: {settings['width']}x{settings['height']}")
     print(f"   Frame rate: {settings['fps']} fps")
     print(f"   Bitrate: {settings['bitrate']/1000:.0f} kbps")
@@ -241,34 +241,34 @@ def main():
     print(f"   Max connections: {settings['max_connections']}")
     
     # Confirm
-    confirm = input(f"\n💾 Save this configuration? (y/n): ").lower().strip()
+    confirm = input(f"\nSave this configuration? (y/n): ").lower().strip()
     
     if confirm == 'y':
         create_config(settings)
         
-        print(f"\n🚀 Next steps:")
+        print(f"\nNext steps:")
         print(f"   1. Start the server: ./start_stream.sh")
         print(f"   2. Open browser: http://[PI_IP]:{settings['port']}")
         print(f"   3. Monitor performance: ./status.sh")
         
         # Performance warning for Pi Zero
         if 'Zero' in pi_model and 'Pi Zero 2' not in pi_model and (settings['width'] > 640 or settings['fps'] > 20):
-            print(f"\n⚠️  Performance Warning:")
+            print(f"\nPerformance Warning:")
             print(f"   Your settings may be too demanding for Pi Zero W")
             print(f"   Consider reducing resolution or frame rate if you experience issues")
         elif 'Pi Zero 2' in pi_model and (settings['width'] > 1280 or settings['fps'] > 30):
-            print(f"\n⚠️  Performance Warning:")
+            print(f"\nPerformance Warning:")
             print(f"   Your settings may be demanding for Pi Zero 2 W")
             print(f"   Monitor CPU usage and temperature during operation")
     else:
-        print("❌ Configuration not saved")
+        print("Configuration not saved")
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n❌ Configuration cancelled")
+        print("\nConfiguration cancelled")
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ Configuration failed: {e}")
+        print(f"\nConfiguration failed: {e}")
         sys.exit(1)

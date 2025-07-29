@@ -13,12 +13,12 @@ from statistics import mean, stdev
 
 def test_camera_performance():
     """Test camera capture performance."""
-    print("🎥 Testing camera performance...")
+    print("Testing camera performance...")
     
     try:
         cap = cv2.VideoCapture(0)
         if not cap.isOpened():
-            print("❌ Cannot open camera")
+            print("Cannot open camera")
             return None
         
         # Set camera properties
@@ -43,7 +43,7 @@ def test_camera_performance():
                 frame_times.append(frame_end - frame_start)
                 frame_count += 1
             else:
-                print("⚠️  Failed to capture frame")
+                print("Failed to capture frame")
         
         cap.release()
         
@@ -52,7 +52,7 @@ def test_camera_performance():
             avg_frame_time = mean(frame_times) * 1000  # ms
             frame_time_std = stdev(frame_times) * 1000 if len(frame_times) > 1 else 0
             
-            print(f"✅ Camera Performance Results:")
+            print(f"Camera Performance Results:")
             print(f"   Average FPS: {avg_fps:.1f}")
             print(f"   Average frame time: {avg_frame_time:.1f}ms")
             print(f"   Frame time std dev: {frame_time_std:.1f}ms")
@@ -65,16 +65,16 @@ def test_camera_performance():
                 'total_frames': frame_count
             }
         else:
-            print("❌ No frames captured")
+            print("No frames captured")
             return None
             
     except Exception as e:
-        print(f"❌ Camera test failed: {e}")
+        print(f"Camera test failed: {e}")
         return None
 
 def test_system_performance():
     """Test system performance metrics."""
-    print("\n🖥️  Testing system performance...")
+    print("\nTesting system performance...")
     
     # CPU test
     cpu_percent = psutil.cpu_percent(interval=1)
@@ -94,7 +94,7 @@ def test_system_performance():
     except:
         pass
     
-    print(f"✅ System Performance Results:")
+    print(f"System Performance Results:")
     print(f"   CPU cores: {cpu_count}")
     print(f"   CPU usage: {cpu_percent}%")
     print(f"   Memory total: {memory.total / (1024**3):.1f}GB")
@@ -116,12 +116,12 @@ def test_system_performance():
 
 def test_encoding_performance():
     """Test video encoding performance."""
-    print("\n🎬 Testing video encoding performance...")
+    print("\nTesting video encoding performance...")
     
     try:
         cap = cv2.VideoCapture(0)
         if not cap.isOpened():
-            print("❌ Cannot open camera for encoding test")
+            print("Cannot open camera for encoding test")
             return None
         
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
@@ -156,7 +156,7 @@ def test_encoding_performance():
             avg_encoding_time = mean(encoding_times) * 1000  # ms
             max_possible_fps = 1000 / avg_encoding_time if avg_encoding_time > 0 else 0
             
-            print(f"✅ Encoding Performance Results:")
+            print(f"Encoding Performance Results:")
             print(f"   Average encoding time: {avg_encoding_time:.1f}ms")
             print(f"   Max theoretical FPS: {max_possible_fps:.1f}")
             print(f"   Frames processed: {len(encoding_times)}")
@@ -167,38 +167,38 @@ def test_encoding_performance():
                 'frames_processed': len(encoding_times)
             }
         else:
-            print("❌ No frames processed")
+            print("No frames processed")
             return None
             
     except Exception as e:
-        print(f"❌ Encoding test failed: {e}")
+        print(f"Encoding test failed: {e}")
         return None
 
 def generate_recommendations(camera_results, system_results, encoding_results):
     """Generate performance recommendations."""
-    print("\n💡 Performance Recommendations:")
+    print("\nPerformance Recommendations:")
     
     if not camera_results or not system_results:
-        print("❌ Cannot generate recommendations - insufficient test data")
+        print("Cannot generate recommendations - insufficient test data")
         return
     
     # Camera recommendations
     if camera_results['fps'] < 15:
-        print("📹 Camera: Consider reducing resolution or frame rate")
+        print("Camera: Consider reducing resolution or frame rate")
     elif camera_results['fps'] > 25:
-        print("📹 Camera: Good performance, can handle high frame rates")
+        print("Camera: Good performance, can handle high frame rates")
     
     # System recommendations
     if system_results['cpu_percent'] > 80:
-        print("🖥️  CPU: High usage detected, consider optimizations")
+        print("CPU: High usage detected, consider optimizations")
     if system_results['memory_percent'] > 80:
-        print("💾 Memory: High usage detected, monitor for memory leaks")
+        print("Memory: High usage detected, monitor for memory leaks")
     if system_results['temperature'] and system_results['temperature'] > 70:
         print("🌡️  Temperature: Consider adding cooling")
     
     # Encoding recommendations
     if encoding_results and encoding_results['max_fps'] < 20:
-        print("🎬 Encoding: Consider using lower resolution or quality settings")
+        print("Encoding: Consider using lower resolution or quality settings")
     
     # Suggested configuration
     print("\n⚙️  Suggested Configuration:")
@@ -218,7 +218,7 @@ def generate_recommendations(camera_results, system_results, encoding_results):
 
 def main():
     """Run all performance tests."""
-    print("🚀 WebRTC Camera Performance Test")
+    print("WebRTC Camera Performance Test")
     print("==================================")
     
     # Test camera
@@ -233,15 +233,15 @@ def main():
     # Generate recommendations
     generate_recommendations(camera_results, system_results, encoding_results)
     
-    print("\n✅ Performance testing complete!")
+    print("\nPerformance testing complete!")
     print("\nUse these results to optimize your config.ini file")
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n❌ Test interrupted by user")
+        print("\nTest interrupted by user")
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ Test failed: {e}")
+        print(f"\nTest failed: {e}")
         sys.exit(1)

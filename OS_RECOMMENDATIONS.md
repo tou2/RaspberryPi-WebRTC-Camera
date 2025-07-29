@@ -1,29 +1,29 @@
-# 🐧 Raspberry Pi OS Recommendations for WebRTC Camera Streaming
+# Raspberry Pi OS Recommendations for WebRTC Camera Streaming
 
 Since you don't need a UI for camera streaming, here are the best OS options:
 
-## 🎯 **Recommended: Raspberry Pi OS Lite (64-bit)**
+## Recommended: Raspberry Pi OS Lite (64-bit)
 
-### 📥 **Download Links:**
+### Download Links:
 - **Official Imager**: https://www.raspberrypi.org/software/
 - **Direct Download**: https://downloads.raspberrypi.org/raspios_lite_arm64/images/
 
-### ✅ **Why Raspberry Pi OS Lite?**
+### Why Raspberry Pi OS Lite?
 
-#### 🚀 **Performance Benefits:**
+#### Performance Benefits:
 - **No desktop environment** = more resources for streaming
 - **Minimal background processes** = lower CPU usage
 - **Smaller memory footprint** = more RAM for video processing
 - **Faster boot time** = quick camera startup
 - **Less heat generation** = better sustained performance
 
-#### 💾 **Storage Benefits:**
+#### Storage Benefits:
 - **~500MB smaller** than full OS
 - **Fewer packages** to update
 - **Less SD card wear** from background processes
 - **More space** for logs and recordings
 
-#### 🔧 **Streaming Benefits:**
+#### Streaming Benefits:
 - **Better network performance** (no GUI network manager conflicts)
 - **Consistent performance** (no random desktop processes)
 - **Easier automation** (headless operation)
@@ -31,7 +31,7 @@ Since you don't need a UI for camera streaming, here are the best OS options:
 
 ---
 
-## 📋 **OS Versions by Pi Model:**
+## OS Versions by Pi Model:
 
 | Pi Model | Recommended OS | Architecture | Notes |
 |----------|---------------|--------------|-------|
@@ -43,7 +43,7 @@ Since you don't need a UI for camera streaming, here are the best OS options:
 
 ---
 
-## 🛠️ **Installation Steps:**
+## Installation Steps:
 
 ### 1. **Download Raspberry Pi Imager**
 ```bash
@@ -52,19 +52,19 @@ Since you don't need a UI for camera streaming, here are the best OS options:
 
 ### 2. **Flash SD Card with Imager**
 - Choose "Raspberry Pi OS Lite (64-bit)" 
-- Click gear icon ⚙️ for advanced options
+- Click gear icon for advanced options
 - **Enable SSH** (very important!)
 - Set **username/password**
 - Configure **WiFi** (if using wireless)
 
 ### 3. **Essential Settings in Imager:**
 ```
-✅ Enable SSH
-✅ Set username: pi (or your choice)
-✅ Set password: (strong password)
-✅ Configure WiFi SSID/password
-✅ Set WiFi country
-✅ Enable camera (if option available)
+Enable SSH
+Set username: pi (or your choice)
+Set password: (strong password)
+Configure WiFi SSID/password
+Set WiFi country
+Enable camera (if option available)
 ```
 
 ### 4. **First Boot Setup:**
@@ -84,7 +84,7 @@ sudo reboot
 
 ---
 
-## 🔧 **Alternative: Custom Minimal Setup**
+## Alternative: Custom Minimal Setup
 
 If you want even more performance optimization:
 
@@ -101,9 +101,9 @@ If you want even more performance optimization:
 
 ---
 
-## 💡 **Pro Tips:**
+## Pro Tips:
 
-### 🎯 **For Maximum Performance:**
+### For Maximum Performance:
 1. **Disable unnecessary services:**
    ```bash
    sudo systemctl disable bluetooth
@@ -123,7 +123,7 @@ If you want even more performance optimization:
    sudo systemctl disable dphys-swapfile
    ```
 
-### 📱 **For Remote Management:**
+### For Remote Management:
 - **Install screen/tmux** for persistent sessions
 - **Set up key-based SSH** for security
 - **Configure static IP** for consistent access
@@ -131,12 +131,12 @@ If you want even more performance optimization:
 
 ---
 
-## 🎯 **Bottom Line:**
+## Bottom Line:
 
 **Use Raspberry Pi OS Lite (64-bit)** unless you have a specific reason not to:
 
-- ✅ **Pi Zero W**: RPi OS Lite 32-bit (for compatibility)
-- ✅ **Pi Zero 2 W**: RPi OS Lite 64-bit (best performance)
-- ✅ **Pi 3/4/5**: RPi OS Lite 64-bit (definitely!)
+- **Pi Zero W**: RPi OS Lite 32-bit (for compatibility)
+- **Pi Zero 2 W**: RPi OS Lite 64-bit (best performance)
+- **Pi 3/4/5**: RPi OS Lite 64-bit (definitely!)
 
 The installation script (`install.sh`) will handle all the optimization and setup automatically once you have the base OS running!
