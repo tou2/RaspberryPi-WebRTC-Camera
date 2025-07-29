@@ -399,7 +399,309 @@ twistedcamera/
 
 ---
 
-## 🚀 Complete Solution Features
+## � Docker Deployment Guide
+
+### Quick Start with Docker
+
+The easiest way to deploy using Docker:
+
+```bash
+# Build and start the container
+docker-compose up --build -d
+
+# View logs
+docker-compose logs -f
+
+# Stop the container
+docker-compose down
+```
+
+### Docker Compose Configuration
+
+The `docker-compose.yml` provides a complete setup:
+
+```yaml
+version: '3.8'
+services:
+  webrtc-camera:
+    build: .
+    ports:
+      - "8080:8080"
+    devices:
+      - /dev/video0:/dev/video0  # Camera access
+    volumes:
+      - ./config.ini:/app/config.ini:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    privileged: true  # Required for camera access
+```
+
+### Manual Docker Commands
+
+#### Build the Image
+```bash
+# Build for your Pi architecture
+docker build -t webrtc-camera .
+
+# Build for specific architecture (if cross-compiling)
+docker buildx build --platform linux/arm/v6 -t webrtc-camera .  # Pi Zero
+docker buildx build --platform linux/arm64 -t webrtc-camera .   # Pi 4/5
+```
+
+#### Run the Container
+```bash
+# Basic run
+docker run -d \
+  --name webrtc-camera \
+  -p 8080:8080 \
+  --device /dev/video0:/dev/video0 \
+  --privileged \
+  webrtc-camera
+
+# Run with custom config
+docker run -d \
+  --name webrtc-camera \
+  -p 8080:8080 \
+  --device /dev/video0:/dev/video0 \
+  -v $(pwd)/config.ini:/app/config.ini:ro \
+  --privileged \
+  webrtc-camera
+
+# Run with interactive mode (for debugging)
+docker run -it \
+  --name webrtc-camera \
+  -p 8080:8080 \
+  --device /dev/video0:/dev/video0 \
+  --privileged \
+  webrtc-camera bash
+```
+
+### Docker Management Commands
+
+```bash
+# Container lifecycle
+docker-compose up -d          # Start in background
+docker-compose down           # Stop and remove
+docker-compose restart        # Restart services
+docker-compose pull           # Update images
+
+# Monitoring
+docker-compose logs -f        # Follow logs
+docker-compose ps             # Check status
+docker stats webrtc-camera    # Resource usage
+
+# Maintenance
+docker-compose down -v        # Remove with volumes
+docker system prune           # Clean unused containers/images
+```
+
+### Docker Configuration Options
+
+#### Environment Variables
+Set these in `docker-compose.yml` or pass with `-e`:
+
+```yaml
+environment:
+  - CAMERA_WIDTH=640
+  - CAMERA_HEIGHT=480
+  - CAMERA_FPS=20
+  - SERVER_PORT=8080
+  - BITRATE=500000
+```
+
+#### Volume Mounts
+Customize configuration and data persistence:
+
+```yaml
+volumes:
+  - ./config.ini:/app/config.ini:ro       # Custom config
+  - ./logs:/app/logs                      # Log persistence
+  - camera-data:/app/data                 # Data persistence
+```
+
+#### Device Access
+Essential for camera functionality:
+
+```yaml
+devices:
+  - /dev/video0:/dev/video0               # Primary camera
+  - /dev/video1:/dev/video1               # Secondary camera (if available)
+```
+
+### Docker Networking
+
+#### Default Setup
+The container exposes port 8080 and maps it to the host:
+
+```yaml
+ports:
+  - "8080:8080"                           # Host:Container
+```
+
+#### Custom Port Mapping
+```yaml
+ports:
+  - "9090:8080"                           # Access via port 9090
+```
+
+#### Network Mode
+For advanced networking:
+
+```yaml
+network_mode: "host"                      # Use host networking
+```
+
+### Multi-Architecture Support
+
+The Dockerfile supports multiple Pi architectures:
+
+#### For Pi Zero W (ARMv6)
+```bash
+docker buildx build --platform linux/arm/v6 -t webrtc-camera:armv6 .
+```
+
+#### For Pi Zero 2 W / Pi 3 (ARMv7)
+```bash
+docker buildx build --platform linux/arm/v7 -t webrtc-camera:armv7 .
+```
+
+#### For Pi 4/5 (ARM64)
+```bash
+docker buildx build --platform linux/arm64 -t webrtc-camera:arm64 .
+```
+
+### Production Deployment
+
+#### Using Docker Swarm
+```bash
+# Initialize swarm
+docker swarm init
+
+# Deploy stack
+docker stack deploy -c docker-compose.yml webrtc-stack
+```
+
+#### Resource Limits
+Add to `docker-compose.yml`:
+
+```yaml
+deploy:
+  resources:
+    limits:
+      memory: 256M      # Limit memory usage
+      cpus: '0.5'       # Limit CPU usage
+    reservations:
+      memory: 128M
+      cpus: '0.25'
+```
+
+### Troubleshooting Docker Issues
+
+#### Camera Not Accessible
+```bash
+# Check camera device exists
+ls -la /dev/video*
+
+# Verify camera permissions
+sudo usermod -a -G video $USER
+
+# Check if camera is in use
+lsof /dev/video0
+```
+
+#### Container Won't Start
+```bash
+# Check container logs
+docker-compose logs webrtc-camera
+
+# Check container status
+docker ps -a
+
+# Debug with shell access
+docker-compose exec webrtc-camera bash
+```
+
+#### Performance Issues
+```bash
+# Monitor resource usage
+docker stats webrtc-camera
+
+# Check system resources
+free -h
+top
+```
+
+#### Port Conflicts
+```bash
+# Check if port is in use
+sudo netstat -tulpn | grep 8080
+
+# Use different port
+docker-compose down
+# Edit docker-compose.yml to change port
+docker-compose up -d
+```
+
+### Docker vs Native Installation
+
+| Feature | Docker | Native |
+|---------|--------|--------|
+| **Setup Time** | Fast (5 min) | Longer (15-30 min) |
+| **Isolation** | Excellent | None |
+| **Updates** | Easy (`docker-compose pull`) | Manual |
+| **Debugging** | Moderate | Easy |
+| **Performance** | ~5% overhead | Native speed |
+| **Disk Usage** | Higher (~500MB) | Lower (~100MB) |
+| **System Integration** | Limited | Full |
+
+### Docker Best Practices
+
+1. **Use specific tags** instead of `latest` for production
+2. **Set resource limits** to prevent system overload  
+3. **Use health checks** for automatic container restart
+4. **Mount config as read-only** for security
+5. **Use multi-stage builds** to minimize image size
+6. **Enable logging rotation** to prevent disk filling
+
+#### Health Check Example
+Add to `docker-compose.yml`:
+
+```yaml
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 40s
+```
+
+### Advanced Docker Features
+
+#### Automatic Restart Policies
+```yaml
+restart: unless-stopped        # Restart unless manually stopped
+restart: always               # Always restart
+restart: on-failure:3         # Restart on failure, max 3 attempts
+```
+
+#### Custom Networks
+```yaml
+networks:
+  camera-network:
+    driver: bridge
+```
+
+#### Secrets Management
+```yaml
+secrets:
+  camera_config:
+    file: ./config.ini
+```
+
+---
+
+## �🚀 Complete Solution Features
 
 ### Ultra-Low Latency Optimizations
 - ⚡ **Minimal buffering** (1 frame buffer)

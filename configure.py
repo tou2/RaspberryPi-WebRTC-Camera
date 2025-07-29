@@ -15,8 +15,12 @@ def get_pi_model():
         with open('/proc/cpuinfo', 'r') as f:
             cpuinfo = f.read()
         
-        if 'Pi Zero' in cpuinfo:
-            return 'Pi Zero'
+        if 'Pi Zero 2' in cpuinfo:
+            return 'Pi Zero 2 W'
+        elif 'Pi Zero' in cpuinfo:
+            return 'Pi Zero W'
+        elif 'Pi 5' in cpuinfo:
+            return 'Pi 5'
         elif 'Pi 4' in cpuinfo:
             return 'Pi 4'
         elif 'Pi 3' in cpuinfo:
@@ -154,10 +158,20 @@ def main():
     settings = {}
     
     # Base settings by device
-    if 'Zero' in pi_model:
+    if 'Pi Zero 2' in pi_model:
+        base_settings = {
+            'width': 1280, 'height': 720, 'fps': 25, 'bitrate': 800000,
+            'h264_profile': 'main', 'video_threads': 4, 'max_connections': 4
+        }
+    elif 'Zero' in pi_model:
         base_settings = {
             'width': 480, 'height': 360, 'fps': 15, 'bitrate': 300000,
             'h264_profile': 'baseline', 'video_threads': 1, 'max_connections': 2
+        }
+    elif 'Pi 5' in pi_model:
+        base_settings = {
+            'width': 1920, 'height': 1080, 'fps': 30, 'bitrate': 2500000,
+            'h264_profile': 'high', 'video_threads': 8, 'max_connections': 10
         }
     elif 'Pi 4' in pi_model:
         base_settings = {
@@ -238,10 +252,14 @@ def main():
         print(f"   3. Monitor performance: ./status.sh")
         
         # Performance warning for Pi Zero
-        if 'Zero' in pi_model and (settings['width'] > 640 or settings['fps'] > 20):
+        if 'Zero' in pi_model and 'Pi Zero 2' not in pi_model and (settings['width'] > 640 or settings['fps'] > 20):
             print(f"\n⚠️  Performance Warning:")
-            print(f"   Your settings may be too demanding for Pi Zero")
+            print(f"   Your settings may be too demanding for Pi Zero W")
             print(f"   Consider reducing resolution or frame rate if you experience issues")
+        elif 'Pi Zero 2' in pi_model and (settings['width'] > 1280 or settings['fps'] > 30):
+            print(f"\n⚠️  Performance Warning:")
+            print(f"   Your settings may be demanding for Pi Zero 2 W")
+            print(f"   Monitor CPU usage and temperature during operation")
     else:
         print("❌ Configuration not saved")
 
