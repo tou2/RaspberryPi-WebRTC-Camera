@@ -112,9 +112,24 @@ elif ! grep -q "gpu_mem=128" /boot/config.txt; then
     print_status "GPU memory updated to 128MB"
 fi
 
-# Enable camera interface
+# Enable camera interface (try multiple methods)
 print_status "Enabling camera interface..."
-sudo raspi-config nonint do_camera 0
+
+# Method 1: Try raspi-config (may not work on newer OS versions)
+if sudo raspi-config nonint do_camera 0 2>/dev/null; then
+    print_status "Camera enabled via raspi-config"
+else
+    print_warning "raspi-config camera option not available (normal on newer OS)"
+fi
+
+# Method 2: Ensure camera is properly configured in boot files
+print_status "Configuring camera in boot configuration..."
+
+# For newer Pi OS, ensure dtparam=camera=on is set
+if ! grep -q "dtparam=camera=on" /boot/config.txt; then
+    echo "dtparam=camera=on" | sudo tee -a /boot/config.txt
+    print_status "Added dtparam=camera=on to boot config"
+fi
 
 # Install libcamera tools for new camera support
 print_status "Installing libcamera tools for new camera modules..."
@@ -179,16 +194,6 @@ print_section "Camera Testing"
 
 print_status "Testing camera functionality..."
 
-# First check if camera device exists
-if [ ! -e /dev/video0 ]; then
-    print_error "Camera device /dev/video0 not found!"
-    print_status "Troubleshooting steps:"
-    print_status "1. Check camera connection"
-    print_status "2. Run: vcgencmd get_camera"
-    print_status "3. Try: sudo modprobe bcm2835-v4l2"
-    exit 1
-fi
-
 # Check camera with vcgencmd first
 print_status "Checking camera with vcgencmd..."
 CAMERA_STATUS=$(vcgencmd get_camera 2>/dev/null || echo "supported=0 detected=0")
@@ -198,76 +203,81 @@ if echo "$CAMERA_STATUS" | grep -q "detected=0"; then
     print_error "Camera not detected by system!"
     print_status "Please check:"
     print_status "1. Camera cable is properly connected"
-    print_status "2. Camera is enabled in raspi-config"
-    print_status "3. Reboot after enabling camera"
-    exit 1
+    print_status "2. Camera cable orientation (connector facing away from ethernet port)"
+    print_status "3. Camera is properly seated in connector"
+    print_warning "Will continue installation - camera may work after reboot"
 fi
 
-# Test with raspistill first (more reliable)
-print_status "Testing camera with raspistill..."
-if timeout 10 raspistill -t 1 -o /tmp/test.jpg >/dev/null 2>&1; then
-    print_status "Camera hardware test successful!"
-    rm -f /tmp/test.jpg
+# Test with libcamera first (for new cameras)
+if command -v libcamera-hello >/dev/null 2>&1; then
+    print_status "Testing with libcamera (recommended for new cameras)..."
+    if timeout 10 libcamera-hello --timeout 2000 --nopreview 2>/dev/null; then
+        print_status "Camera test successful with libcamera!"
+    else
+        print_warning "libcamera test failed - this may be normal during installation"
+    fi
 else
-    print_error "Camera hardware test failed!"
-    print_status "Trying to load camera module..."
-    sudo modprobe bcm2835-v4l2
-    sleep 2
+    print_warning "libcamera tools not available - installing now..."
+    sudo apt-get install -y libcamera-apps
 fi
 
-# Now test with OpenCV
-print_status "Testing camera with OpenCV..."
-python3 -c "
+# Test with raspistill (for legacy cameras)
+if command -v raspistill >/dev/null 2>&1; then
+    print_status "Testing camera with raspistill (legacy support)..."
+    if timeout 10 raspistill -t 1 -o /tmp/test.jpg >/dev/null 2>&1; then
+        print_status "Camera hardware test successful!"
+        rm -f /tmp/test.jpg
+    else
+        print_warning "raspistill test failed (normal for new cameras)"
+        print_status "Trying to load camera module..."
+        sudo modprobe bcm2835-v4l2 2>/dev/null || true
+        sleep 2
+    fi
+else
+    print_warning "raspistill not available (normal for minimal OS installations)"
+fi
+
+# Check if camera device exists
+if [ ! -e /dev/video0 ]; then
+    print_warning "Camera device /dev/video0 not found!"
+    print_status "This is normal during installation - device will appear after reboot"
+    print_status "If camera still doesn't work after reboot:"
+    print_status "1. Run: ./camera_test.sh"
+    print_status "2. Check cable connection"
+    print_status "3. Verify camera is enabled in boot config"
+else
+    print_status "Camera device /dev/video0 found"
+    
+    # Test with OpenCV if available
+    if python3 -c "import cv2" 2>/dev/null; then
+        print_status "Testing camera with OpenCV..."
+        python3 -c "
 import cv2
 import sys
 import time
 
 try:
-    # Try multiple camera indices
-    for camera_idx in [0, 1]:
-        print(f'Trying camera index {camera_idx}...')
-        cap = cv2.VideoCapture(camera_idx)
-        
-        if cap.isOpened():
-            # Set some properties before trying to read
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            cap.set(cv2.CAP_PROP_FPS, 15)
-            
-            # Wait a moment for camera to initialize
-            time.sleep(2)
-            
-            # Try multiple frame captures
-            for attempt in range(5):
-                ret, frame = cap.read()
-                if ret and frame is not None:
-                    print(f'Camera test successful on index {camera_idx}!')
-                    print(f'Frame shape: {frame.shape}')
-                    cap.release()
-                    sys.exit(0)
-                print(f'Attempt {attempt + 1}: No frame captured, retrying...')
-                time.sleep(1)
-            
-            cap.release()
-        
-    print('ERROR: Could not capture frames from any camera')
-    print('Troubleshooting:')
-    print('1. Check camera connection')
-    print('2. Ensure camera is enabled: sudo raspi-config')
-    print('3. Try: sudo modprobe bcm2835-v4l2')
-    print('4. Reboot and try again')
-    sys.exit(1)
-    
+    cap = cv2.VideoCapture(0)
+    if cap.isOpened():
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        time.sleep(2)
+        ret, frame = cap.read()
+        if ret and frame is not None:
+            print('Camera test successful with OpenCV!')
+            print(f'Frame shape: {frame.shape}')
+        else:
+            print('Camera opened but no frame captured')
+        cap.release()
+    else:
+        print('Camera could not be opened with OpenCV')
 except Exception as e:
-    print(f'Camera test failed with exception: {e}')
-    print('This may be normal during installation - camera will be tested again after reboot')
-"
-
-# Don't exit on camera test failure during install - it may work after reboot
-if [ $? -ne 0 ]; then
-    print_warning "Camera test failed, but continuing installation..."
-    print_warning "Camera functionality will be verified after reboot"
+    print(f'Camera test failed: {e}')
+" 2>/dev/null || print_warning "OpenCV camera test failed - may work after reboot"
+    fi
 fi
+
+print_warning "Camera functionality will be fully verified after reboot"
 
 print_section "Service Configuration"
 
@@ -352,50 +362,160 @@ chmod +x stop_stream.sh
 cat > camera_test.sh << 'EOF'
 #!/bin/bash
 
-# Camera troubleshooting script
+# Comprehensive Camera Test and Troubleshooting Script
+# For new and legacy Raspberry Pi cameras
 
-echo "=== Camera Diagnostics ==="
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+print_status() { echo -e "${GREEN}[INFO]${NC} $1"; }
+print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+print_section() { echo -e "\n${BLUE}=== $1 ===${NC}"; }
+
+echo "=================================================="
+echo "Pi Camera Test & Troubleshooting"
+echo "=================================================="
+
+print_section "1. System Information"
+echo "Pi Model: $(grep 'Raspberry Pi' /proc/cpuinfo | head -1 | cut -d':' -f2 | xargs)"
+echo "OS: $(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)"
 echo ""
 
-# Check if camera device exists
-echo "1. Checking camera device..."
-if [ -e /dev/video0 ]; then
-    echo "✓ /dev/video0 exists"
-    ls -la /dev/video0
+print_section "2. Boot Configuration Check"
+print_status "Checking /boot/config.txt settings..."
+
+# Check various camera configurations
+if grep -q "^camera_auto_detect=1" /boot/config.txt 2>/dev/null; then
+    echo "✓ camera_auto_detect=1 (recommended for new cameras)"
+elif grep -q "^dtparam=camera=on" /boot/config.txt 2>/dev/null; then
+    echo "✓ dtparam=camera=on (alternative method)"
+elif grep -q "^start_x=1" /boot/config.txt 2>/dev/null; then
+    echo "✓ start_x=1 (legacy camera support)"
 else
-    echo "✗ /dev/video0 not found"
+    print_error "Camera not enabled in boot config!"
+    echo "Add one of these to /boot/config.txt:"
+    echo "  camera_auto_detect=1  (for new cameras)"
+    echo "  dtparam=camera=on     (alternative)"
+    echo "  start_x=1             (legacy cameras)"
+fi
+
+# Check GPU memory
+GPU_MEM=$(grep "^gpu_mem=" /boot/config.txt 2>/dev/null | cut -d'=' -f2)
+if [ ! -z "$GPU_MEM" ]; then
+    echo "GPU Memory: ${GPU_MEM}MB"
+    if [ "$GPU_MEM" -ge 128 ]; then
+        echo "✓ GPU memory sufficient"
+    else
+        print_warning "GPU memory low (recommended: 128MB+)"
+    fi
+else
+    print_warning "GPU memory not set (add gpu_mem=128 to /boot/config.txt)"
 fi
 echo ""
 
-# Check camera status with vcgencmd
-echo "2. Checking camera status..."
-vcgencmd get_camera 2>/dev/null || echo "vcgencmd not available"
+print_section "3. Hardware Detection"
+print_status "Checking camera with vcgencmd..."
+if command -v vcgencmd >/dev/null 2>&1; then
+    CAMERA_STATUS=$(vcgencmd get_camera 2>/dev/null)
+    echo "Camera status: $CAMERA_STATUS"
+    
+    if echo "$CAMERA_STATUS" | grep -q "detected=1"; then
+        echo "✓ Camera detected by firmware"
+    else
+        print_error "Camera not detected by firmware!"
+        echo "Check:"
+        echo "1. Camera cable connection"
+        echo "2. Cable orientation (connector away from ethernet)"
+        echo "3. Camera module properly seated"
+    fi
+else
+    print_warning "vcgencmd not available"
+fi
 echo ""
 
-# Check if camera module is loaded
-echo "3. Checking loaded modules..."
-lsmod | grep -i camera || echo "No camera modules loaded"
-lsmod | grep bcm2835 || echo "No bcm2835 modules loaded"
+print_section "4. Camera Device Check"
+print_status "Checking for camera devices..."
+if ls /dev/video* >/dev/null 2>&1; then
+    echo "Camera devices found:"
+    ls -la /dev/video*
+    
+    # Check permissions
+    for device in /dev/video*; do
+        if [ -r "$device" ] && [ -w "$device" ]; then
+            echo "✓ $device - accessible"
+        else
+            echo "✗ $device - permission issues"
+            echo "  Fix: sudo usermod -a -G video $USER"
+        fi
+    done
+else
+    print_error "No video devices found!"
+    echo "Try:"
+    echo "1. sudo modprobe bcm2835-v4l2"
+    echo "2. Reboot after enabling camera"
+fi
 echo ""
 
-# Try loading camera module
-echo "4. Loading camera module..."
-sudo modprobe bcm2835-v4l2 && echo "✓ Module loaded" || echo "✗ Failed to load module"
+print_section "5. libcamera Test (New Cameras)"
+if command -v libcamera-hello >/dev/null 2>&1; then
+    print_status "Testing with libcamera-hello..."
+    if timeout 10 libcamera-hello --timeout 2000 --nopreview 2>/dev/null; then
+        echo "✓ libcamera test successful!"
+    else
+        print_error "libcamera test failed"
+    fi
+    
+    print_status "Testing with libcamera-still..."
+    if timeout 10 libcamera-still -t 2000 -o /tmp/test_libcamera.jpg --nopreview 2>/dev/null; then
+        if [ -f /tmp/test_libcamera.jpg ] && [ -s /tmp/test_libcamera.jpg ]; then
+            echo "✓ libcamera-still test successful!"
+            echo "  Image size: $(stat -c%s /tmp/test_libcamera.jpg) bytes"
+            rm -f /tmp/test_libcamera.jpg
+        else
+            print_error "libcamera-still failed to create image"
+        fi
+    else
+        print_error "libcamera-still test failed"
+    fi
+else
+    print_warning "libcamera tools not installed"
+    echo "Install with: sudo apt-get install -y libcamera-apps"
+fi
 echo ""
 
-# Test with raspistill
-echo "5. Testing with raspistill..."
-timeout 10 raspistill -t 1 -o /tmp/camera_test.jpg 2>/dev/null && echo "✓ raspistill test passed" || echo "✗ raspistill test failed"
-rm -f /tmp/camera_test.jpg
+print_section "6. raspistill Test (Legacy Cameras)"
+if command -v raspistill >/dev/null 2>&1; then
+    print_status "Testing with raspistill..."
+    if timeout 10 raspistill -t 1000 -o /tmp/test_raspistill.jpg 2>/dev/null; then
+        if [ -f /tmp/test_raspistill.jpg ] && [ -s /tmp/test_raspistill.jpg ]; then
+            echo "✓ raspistill test successful!"
+            echo "  Image size: $(stat -c%s /tmp/test_raspistill.jpg) bytes"
+            rm -f /tmp/test_raspistill.jpg
+        else
+            print_error "raspistill failed to create image"
+        fi
+    else
+        print_warning "raspistill test failed (normal for new cameras)"
+    fi
+else
+    print_warning "raspistill not available"
+    echo "Install with: sudo apt-get install -y raspberrypi-utils"
+fi
 echo ""
 
-# Test with OpenCV
-echo "6. Testing with OpenCV..."
-python3 -c "
+print_section "7. OpenCV Test"
+if python3 -c "import cv2" 2>/dev/null; then
+    print_status "Testing with OpenCV..."
+    python3 -c "
 import cv2
 import time
 
-for idx in [0, 1]:
+for idx in [0, 1, 2]:
     print(f'Testing camera index {idx}...')
     cap = cv2.VideoCapture(idx)
     if cap.isOpened():
@@ -403,8 +523,8 @@ for idx in [0, 1]:
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         time.sleep(2)
         ret, frame = cap.read()
-        if ret:
-            print(f'✓ Camera {idx} working - Frame shape: {frame.shape}')
+        if ret and frame is not None:
+            print(f'✓ Camera {idx} working - Shape: {frame.shape}')
         else:
             print(f'✗ Camera {idx} opened but no frame')
         cap.release()
@@ -412,14 +532,58 @@ for idx in [0, 1]:
         print(f'✗ Camera {idx} could not open')
     print()
 "
+else
+    print_warning "OpenCV not available"
+    echo "Install with: pip install opencv-python"
+fi
 
-echo "=== Troubleshooting Tips ==="
-echo "If camera tests fail:"
-echo "1. Check camera cable connection"
-echo "2. Enable camera: sudo raspi-config -> Interface Options -> Camera"
-echo "3. Reboot after enabling camera"
-echo "4. Check /boot/config.txt has: start_x=1 and gpu_mem=128"
-echo "5. Try: sudo modprobe bcm2835-v4l2"
+print_section "8. Module Loading"
+print_status "Checking and loading camera modules..."
+if lsmod | grep -q bcm2835; then
+    echo "✓ Camera modules loaded:"
+    lsmod | grep bcm2835
+else
+    print_warning "No camera modules loaded, trying to load..."
+    sudo modprobe bcm2835-v4l2 2>/dev/null && echo "✓ Module loaded" || echo "✗ Module load failed"
+fi
+echo ""
+
+print_section "Troubleshooting Recommendations"
+echo ""
+echo "If camera is not working:"
+echo ""
+echo "1. HARDWARE CHECK:"
+echo "   - Ensure camera cable is fully inserted"
+echo "   - Check cable orientation (blue side towards ethernet on most models)"
+echo "   - Try a different camera cable if available"
+echo ""
+echo "2. CONFIGURATION:"
+echo "   - Add to /boot/config.txt: camera_auto_detect=1"
+echo "   - Add to /boot/config.txt: gpu_mem=128"
+echo "   - Reboot after changes: sudo reboot"
+echo ""
+echo "3. SOFTWARE:"
+echo "   - Install libcamera: sudo apt-get install -y libcamera-apps"
+echo "   - Load module: sudo modprobe bcm2835-v4l2"
+echo "   - Check permissions: sudo usermod -a -G video \$USER"
+echo ""
+echo "4. TEST COMMANDS:"
+echo "   - vcgencmd get_camera"
+echo "   - libcamera-hello --timeout 2000"
+echo "   - ls /dev/video*"
+echo ""
+
+# Final status
+if command -v vcgencmd >/dev/null 2>&1; then
+    CAMERA_STATUS=$(vcgencmd get_camera 2>/dev/null)
+    if echo "$CAMERA_STATUS" | grep -q "detected=1"; then
+        print_status "Camera appears to be detected - try running the WebRTC server!"
+    else
+        print_error "Camera hardware issues - check connections and reboot"
+    fi
+fi
+
+echo "Test completed!"
 EOF
 
 chmod +x camera_test.sh

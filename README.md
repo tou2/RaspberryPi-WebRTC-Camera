@@ -1,6 +1,6 @@
-# 🚀 Pi WebRTC Camera Streaming
+﻿# 🚀 Pi WebRTC Camera Streaming
 
-Ultra-low latency WebRTC video streaming solution optimized for all Raspberry Pi models. Stream your Pi camera to any web browser with minimal delay and professional features.
+Ultra-low latency WebRTC video streaming solution optimized for all Raspberry Pi models. Stream your Pi camera to any web browser with minimal delay.
 
 ## ✨ Key Features
 
@@ -9,7 +9,6 @@ Ultra-low latency WebRTC video streaming solution optimized for all Raspberry Pi
 - **Web-Based**: No client software needed
 - **Adaptive Quality**: Automatically optimizes for your hardware
 - **Multiple Deployment Options**: Native Python or Docker
-- **Professional Monitoring**: Real-time performance stats
 
 ## 📋 Hardware Requirements
 
@@ -20,7 +19,7 @@ Ultra-low latency WebRTC video streaming solution optimized for all Raspberry Pi
 | **Storage** | 16GB+ MicroSD (Class 10+) |
 | **Network** | WiFi or Ethernet |
 
-### Expected Performance
+## 📊 Expected Performance
 
 | Model | Resolution | FPS | Viewers | CPU Usage |
 |-------|------------|-----|---------|-----------|
@@ -30,11 +29,9 @@ Ultra-low latency WebRTC video streaming solution optimized for all Raspberry Pi
 | Pi 4 | 1920x1080 | 30+ | 5-10 | 20-40% |
 | Pi 5 | 1920x1080+ | 30+ | 10+ | 15-30% |
 
----
-
 ## 🚀 Quick Start
 
-### Option 1: Automatic Setup (Recommended)
+### Automatic Setup (Recommended)
 
 ```bash
 # Download and run the installer
@@ -48,14 +45,11 @@ sudo reboot
 ./start_stream.sh
 ```
 
-### Option 2: Docker Deployment
+### Docker Deployment
 
 ```bash
 # Start with Docker Compose
 docker-compose up --build -d
-
-# View logs
-docker-compose logs -f
 ```
 
 ### Accessing Your Stream
@@ -64,39 +58,9 @@ docker-compose logs -f
 2. Open browser: `http://[PI_IP]:8080`
 3. Click "Start Stream"
 
----
+## ⚙️ Configuration
 
-## 📊 Performance Optimization
-
-### Pi Zero W Settings
-```ini
-Resolution: 640x480
-Frame Rate: 15-20 fps
-Bitrate: 300-500 kbps
-Profile: Baseline H.264
-```
-
-### Pi Zero 2 W Settings
-```ini
-Resolution: 1280x720
-Frame Rate: 25-30 fps  
-Bitrate: 600-1200 kbps
-Profile: Main H.264
-```
-
-### Pi 4/5 Settings
-```ini
-Resolution: 1920x1080
-Frame Rate: 30+ fps
-Bitrate: 1-5 Mbps
-Profile: High H.264
-```
-
----
-
-## 🛠️ Configuration
-
-### Interactive Configuration Wizard
+### Interactive Configuration
 ```bash
 python3 configure.py
 ```
@@ -107,7 +71,6 @@ python3 configure.py
 width = 640
 height = 480
 fps = 20
-buffer_size = 1
 
 [encoding]
 bitrate = 500000
@@ -116,13 +79,7 @@ h264_profile = baseline
 [network]
 port = 8080
 max_connections = 3
-
-[performance]
-low_latency_mode = true
-video_threads = 2
 ```
-
----
 
 ## 🐳 Docker Deployment
 
@@ -131,85 +88,61 @@ video_threads = 2
 docker-compose up --build -d
 ```
 
-### Manual Docker Commands
+### Manual Commands
 ```bash
-# Build image
+# Build and run
 docker build -t webrtc-camera .
+docker run -d --name webrtc-camera -p 8080:8080 --device /dev/video0:/dev/video0 --privileged webrtc-camera
 
-# Run container
-docker run -d \
-  --name webrtc-camera \
-  -p 8080:8080 \
-  --device /dev/video0:/dev/video0 \
-  --privileged \
-  webrtc-camera
+# Management
+docker-compose logs -f    # View logs
+docker-compose down       # Stop container
 ```
 
-### Docker Management
+## �️ Management
+
+### Scripts
 ```bash
-# View logs
-docker-compose logs -f
-
-# Stop container
-docker-compose down
-
-# Restart
-docker-compose restart
-```
-
----
-
-## 📈 Monitoring & Management
-
-### System Status
-```bash
-./status.sh                    # Complete system diagnostics
-./performance_test.py          # Benchmark your setup
+./status.sh                    # System diagnostics
+./performance_test.py          # Benchmark setup
+./camera_test.sh              # Test camera functionality
 ```
 
 ### Service Management
 ```bash
-# Start/stop service
-sudo systemctl start webrtc-camera.service
-sudo systemctl stop webrtc-camera.service
-
-# Enable auto-start
-sudo systemctl enable webrtc-camera.service
-
-# View logs
-sudo journalctl -u webrtc-camera.service -f
+sudo systemctl start webrtc-camera.service   # Start service
+sudo systemctl stop webrtc-camera.service    # Stop service
+sudo systemctl enable webrtc-camera.service  # Auto-start
+sudo journalctl -u webrtc-camera.service -f  # View logs
 ```
 
-### Real-time Stats
-Access monitoring dashboard: `http://[PI_IP]:8080/stats`
-
----
+### Monitoring
+Access real-time stats: `http://[PI_IP]:8080/stats`
 
 ## 🔧 Troubleshooting
 
 ### Camera Issues
 ```bash
-# Test camera
-vcgencmd get_camera
-raspistill -o test.jpg
+# Test camera (comprehensive diagnostics)
+./camera_test.sh
 
-# Check video devices
-ls /dev/video*
+# Manual tests
+vcgencmd get_camera           # Check hardware detection
+libcamera-hello --timeout 2000  # Test new cameras
+raspistill -o test.jpg        # Test legacy cameras
+ls /dev/video*               # Check video devices
 ```
 
 ### Performance Issues
-1. **Lower resolution** in config.ini
-2. **Reduce frame rate**
-3. **Check temperature**: `vcgencmd measure_temp`
-4. **Monitor CPU**: `top`
+1. Lower resolution in `config.ini`
+2. Reduce frame rate
+3. Check temperature: `vcgencmd measure_temp`
+4. Monitor CPU: `top`
 
 ### Network Issues
 ```bash
-# Check server status
-sudo netstat -tlnp | grep 8080
-
-# Verify firewall
-sudo ufw status
+sudo netstat -tlnp | grep 8080  # Check server status
+sudo ufw status                  # Verify firewall
 ```
 
 ---
