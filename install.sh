@@ -164,28 +164,96 @@ fi
 print_section "Camera Testing"
 
 print_status "Testing camera functionality..."
+
+# First check if camera device exists
+if [ ! -e /dev/video0 ]; then
+    print_error "Camera device /dev/video0 not found!"
+    print_status "Troubleshooting steps:"
+    print_status "1. Check camera connection"
+    print_status "2. Run: vcgencmd get_camera"
+    print_status "3. Try: sudo modprobe bcm2835-v4l2"
+    exit 1
+fi
+
+# Check camera with vcgencmd first
+print_status "Checking camera with vcgencmd..."
+CAMERA_STATUS=$(vcgencmd get_camera 2>/dev/null || echo "supported=0 detected=0")
+print_status "Camera status: $CAMERA_STATUS"
+
+if echo "$CAMERA_STATUS" | grep -q "detected=0"; then
+    print_error "Camera not detected by system!"
+    print_status "Please check:"
+    print_status "1. Camera cable is properly connected"
+    print_status "2. Camera is enabled in raspi-config"
+    print_status "3. Reboot after enabling camera"
+    exit 1
+fi
+
+# Test with raspistill first (more reliable)
+print_status "Testing camera with raspistill..."
+if timeout 10 raspistill -t 1 -o /tmp/test.jpg >/dev/null 2>&1; then
+    print_status "Camera hardware test successful!"
+    rm -f /tmp/test.jpg
+else
+    print_error "Camera hardware test failed!"
+    print_status "Trying to load camera module..."
+    sudo modprobe bcm2835-v4l2
+    sleep 2
+fi
+
+# Now test with OpenCV
+print_status "Testing camera with OpenCV..."
 python3 -c "
 import cv2
 import sys
+import time
 
 try:
-    cap = cv2.VideoCapture(0)
-    if cap.isOpened():
-        ret, frame = cap.read()
-        if ret:
-            print('Camera test successful!')
-            print(f'Frame shape: {frame.shape}')
-        else:
-            print('Camera opened but could not capture frame')
-            sys.exit(1)
-        cap.release()
-    else:
-        print('Could not open camera')
-        sys.exit(1)
-except Exception as e:
-    print(f'Camera test failed: {e}')
+    # Try multiple camera indices
+    for camera_idx in [0, 1]:
+        print(f'Trying camera index {camera_idx}...')
+        cap = cv2.VideoCapture(camera_idx)
+        
+        if cap.isOpened():
+            # Set some properties before trying to read
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            cap.set(cv2.CAP_PROP_FPS, 15)
+            
+            # Wait a moment for camera to initialize
+            time.sleep(2)
+            
+            # Try multiple frame captures
+            for attempt in range(5):
+                ret, frame = cap.read()
+                if ret and frame is not None:
+                    print(f'Camera test successful on index {camera_idx}!')
+                    print(f'Frame shape: {frame.shape}')
+                    cap.release()
+                    sys.exit(0)
+                print(f'Attempt {attempt + 1}: No frame captured, retrying...')
+                time.sleep(1)
+            
+            cap.release()
+        
+    print('ERROR: Could not capture frames from any camera')
+    print('Troubleshooting:')
+    print('1. Check camera connection')
+    print('2. Ensure camera is enabled: sudo raspi-config')
+    print('3. Try: sudo modprobe bcm2835-v4l2')
+    print('4. Reboot and try again')
     sys.exit(1)
+    
+except Exception as e:
+    print(f'Camera test failed with exception: {e}')
+    print('This may be normal during installation - camera will be tested again after reboot')
 "
+
+# Don't exit on camera test failure during install - it may work after reboot
+if [ $? -ne 0 ]; then
+    print_warning "Camera test failed, but continuing installation..."
+    print_warning "Camera functionality will be verified after reboot"
+fi
 
 print_section "Service Configuration"
 
@@ -265,6 +333,82 @@ sudo systemctl stop webrtc-camera.service
 EOF
 
 chmod +x stop_stream.sh
+
+# Create camera troubleshooting script
+cat > camera_test.sh << 'EOF'
+#!/bin/bash
+
+# Camera troubleshooting script
+
+echo "=== Camera Diagnostics ==="
+echo ""
+
+# Check if camera device exists
+echo "1. Checking camera device..."
+if [ -e /dev/video0 ]; then
+    echo "✓ /dev/video0 exists"
+    ls -la /dev/video0
+else
+    echo "✗ /dev/video0 not found"
+fi
+echo ""
+
+# Check camera status with vcgencmd
+echo "2. Checking camera status..."
+vcgencmd get_camera 2>/dev/null || echo "vcgencmd not available"
+echo ""
+
+# Check if camera module is loaded
+echo "3. Checking loaded modules..."
+lsmod | grep -i camera || echo "No camera modules loaded"
+lsmod | grep bcm2835 || echo "No bcm2835 modules loaded"
+echo ""
+
+# Try loading camera module
+echo "4. Loading camera module..."
+sudo modprobe bcm2835-v4l2 && echo "✓ Module loaded" || echo "✗ Failed to load module"
+echo ""
+
+# Test with raspistill
+echo "5. Testing with raspistill..."
+timeout 10 raspistill -t 1 -o /tmp/camera_test.jpg 2>/dev/null && echo "✓ raspistill test passed" || echo "✗ raspistill test failed"
+rm -f /tmp/camera_test.jpg
+echo ""
+
+# Test with OpenCV
+echo "6. Testing with OpenCV..."
+python3 -c "
+import cv2
+import time
+
+for idx in [0, 1]:
+    print(f'Testing camera index {idx}...')
+    cap = cv2.VideoCapture(idx)
+    if cap.isOpened():
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        time.sleep(2)
+        ret, frame = cap.read()
+        if ret:
+            print(f'✓ Camera {idx} working - Frame shape: {frame.shape}')
+        else:
+            print(f'✗ Camera {idx} opened but no frame')
+        cap.release()
+    else:
+        print(f'✗ Camera {idx} could not open')
+    print()
+"
+
+echo "=== Troubleshooting Tips ==="
+echo "If camera tests fail:"
+echo "1. Check camera cable connection"
+echo "2. Enable camera: sudo raspi-config -> Interface Options -> Camera"
+echo "3. Reboot after enabling camera"
+echo "4. Check /boot/config.txt has: start_x=1 and gpu_mem=128"
+echo "5. Try: sudo modprobe bcm2835-v4l2"
+EOF
+
+chmod +x camera_test.sh
 
 print_section "Docker Installation (Optional)"
 
@@ -424,10 +568,12 @@ else
     echo "  - Check service status: ${GREEN}sudo systemctl status webrtc-camera.service${NC}"
     echo "  - View logs: ${GREEN}sudo journalctl -u webrtc-camera.service -f${NC}"
     echo "  - Stop service: ${GREEN}sudo systemctl stop webrtc-camera.service${NC}"
+    echo "  - Test camera: ${GREEN}./camera_test.sh${NC}"
 fi
 echo ""
 print_warning "Note: The first run may take longer as aiortc compiles native modules."
 print_warning "For Pi Zero, expect initial compilation to take 10-15 minutes."
+print_warning "If camera issues persist after reboot, run: ./camera_test.sh"
 
 # Display current IP address
 IP_ADDRESS=$(hostname -I | awk '{print $1}')
