@@ -207,13 +207,15 @@ class OptimizedCameraTrack(VideoStreamTrack):
             self.monitor_thread.start()
     
     def _setup_camera(self):
-        """Initialize v3 camera using rpicam-hello only."""
+        """Initialize v3 camera using rpicam-vid for video streaming."""
         try:
             self.rpicam_cmd = [
-                "rpicam-hello",
+                "rpicam-vid",
                 "--timeout", "0",
                 "--width", str(self.camera_config['width']),
                 "--height", str(self.camera_config['height']),
+                "--framerate", str(self.camera_config['fps']),
+                "--codec", "mjpeg",
                 "--nopreview",
                 "--output", "-"
             ]
@@ -222,7 +224,7 @@ class OptimizedCameraTrack(VideoStreamTrack):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-            logging.info(f"Using Raspberry Pi Camera v3 via rpicam-hello: {' '.join(self.rpicam_cmd)} (PID: {self.rpicam_proc.pid})")
+            logging.info(f"Using Raspberry Pi Camera v3 via rpicam-vid: {' '.join(self.rpicam_cmd)} (PID: {self.rpicam_proc.pid})")
             # Log initial stderr output (first 256 bytes)
             try:
                 import time
@@ -230,9 +232,9 @@ class OptimizedCameraTrack(VideoStreamTrack):
                 if self.rpicam_proc.stderr:
                     err_start = self.rpicam_proc.stderr.read(256)
                     if err_start:
-                        logging.info(f"rpicam-hello initial stderr: {err_start.decode(errors='ignore').strip()}")
+                        logging.info(f"rpicam-vid initial stderr: {err_start.decode(errors='ignore').strip()}")
             except Exception as e:
-                logging.warning(f"Could not read initial rpicam-hello stderr: {e}")
+                logging.warning(f"Could not read initial rpicam-vid stderr: {e}")
         except Exception as e:
             logging.error(f"Failed to initialize v3 camera: {e}")
             raise
@@ -274,58 +276,69 @@ class OptimizedCameraTrack(VideoStreamTrack):
     
     async def recv(self):
         """Receive the next video frame from v3 camera."""
-        import time
         pts, time_base = await self.next_timestamp()
+        
         try:
-            # Read JPEG frame from rpicam stdout
-            jpeg_data = b''
-            start_time = time.time()
+            # Read MJPEG frame from rpicam-vid stdout
+            # Look for JPEG markers to identify frame boundaries
+            frame_data = b''
+            
+            # Read until we find a complete JPEG frame
             while True:
-                chunk = self.rpicam_proc.stdout.read(4096)
+                chunk = self.rpicam_proc.stdout.read(8192)
                 if not chunk:
+                    logging.warning("No data from rpicam-vid")
                     break
-                jpeg_data += chunk
-                if b'\xff\xd9' in chunk:
-                    break
-                if time.time() - start_time > 2.0:
-                    logging.warning("Timeout waiting for JPEG frame from rpicam-hello (2s)")
-                    break
-            logging.info(f"Read {len(jpeg_data)} bytes from rpicam-hello. First 32 bytes: {jpeg_data[:32].hex()}")
-            if not jpeg_data:
-                err_output = self.rpicam_proc.stderr.read().decode(errors='ignore')
-                logging.error(f"rpicam-hello produced no JPEG data. Is the camera connected and working? rpicam-hello stderr: {err_output}")
-                frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
-            else:
-                arr = np.frombuffer(jpeg_data, dtype=np.uint8)
-                frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-                if frame is None:
-                    logging.error("cv2.imdecode failed to decode JPEG data from rpicam-hello.")
-                    frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
-            # Defensive: ensure frame is a valid numpy array
-            if not isinstance(frame, np.ndarray):
-                logging.error(f"Frame is not a numpy array: {type(frame)}. Substituting black frame.")
-                frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
-            else:
-                logging.info(f"Frame shape: {frame.shape}, dtype: {frame.dtype}")
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
-            av_frame.pts = pts
-            av_frame.time_base = time_base
-            return av_frame
+                    
+                frame_data += chunk
+                
+                # Look for JPEG end marker
+                if b'\xff\xd9' in frame_data:
+                    # Find the end of this frame
+                    end_pos = frame_data.find(b'\xff\xd9') + 2
+                    complete_frame = frame_data[:end_pos]
+                    
+                    # Keep remaining data for next frame
+                    remaining = frame_data[end_pos:]
+                    
+                    # Decode the JPEG frame
+                    if len(complete_frame) > 100:  # Valid JPEG should be larger
+                        arr = np.frombuffer(complete_frame, dtype=np.uint8)
+                        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                        
+                        if frame is not None:
+                            # Convert BGR to RGB
+                            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                            
+                            # Update performance stats
+                            self.monitor.update_frame_stats()
+                            
+                            # Create VideoFrame
+                            av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
+                            av_frame.pts = pts
+                            av_frame.time_base = time_base
+                            return av_frame
+                    
+                    # If frame decoding failed, continue reading
+                    frame_data = remaining
+                    
         except Exception as e:
             logging.error(f"Error reading frame from v3 camera: {e}")
-            frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
-            av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
-            av_frame.pts = pts
-            av_frame.time_base = time_base
-            return av_frame
+        
+        # Return black frame if camera read failed
+        logging.warning("Returning black frame due to camera read failure")
+        frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
+        av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
+        av_frame.pts = pts
+        av_frame.time_base = time_base
+        return av_frame
 
     def stop(self):
         """Clean up v3 camera resources."""
         if hasattr(self, 'rpicam_proc') and self.rpicam_proc:
             self.rpicam_proc.terminate()
             self.rpicam_proc.wait()
-            logging.info("rpicam-hello process terminated")
+            logging.info("rpicam-vid process terminated")
 
 class WebRTCServer:
     """Enhanced WebRTC server with configuration support."""
