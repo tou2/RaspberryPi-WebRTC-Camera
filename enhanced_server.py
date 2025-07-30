@@ -684,10 +684,8 @@ async function start() {
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const fullscreenBtn = document.getElementById('fullscreenBtn');
-    
     startBtn.disabled = true;
     updateStatus('Connecting...', 'connecting');
-    
     try {
         pc = new RTCPeerConnection(configuration);
         startTime = Date.now();
@@ -734,12 +732,16 @@ async function start() {
                 type: offer.type,
             }),
         });
-        
         const answer = await response.json();
+        if (answer.error) {
+            throw new Error(answer.error);
+        }
+        if (!answer.sdp || !answer.type) {
+            throw new Error('Invalid answer from server');
+        }
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
         
         stopBtn.disabled = false;
-        
     } catch (error) {
         console.error('Error starting stream:', error);
         updateStatus('Connection failed', 'disconnected');
