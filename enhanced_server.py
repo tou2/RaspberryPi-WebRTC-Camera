@@ -276,7 +276,8 @@ class OptimizedCameraTrack(VideoStreamTrack):
                 if b'\xff\xd9' in chunk:
                     break
             if not jpeg_data:
-                logging.error("rpicam-hello produced no JPEG data. Is the camera connected and working?")
+                err_output = self.rpicam_proc.stderr.read().decode(errors='ignore')
+                logging.error(f"rpicam-hello produced no JPEG data. Is the camera connected and working? rpicam-hello stderr: {err_output}")
                 frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
             else:
                 arr = np.frombuffer(jpeg_data, dtype=np.uint8)
