@@ -284,6 +284,12 @@ class OptimizedCameraTrack(VideoStreamTrack):
                 if frame is None:
                     logging.error("cv2.imdecode failed to decode JPEG data from rpicam-hello.")
                     frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
+            # Defensive: ensure frame is a valid numpy array
+            if not isinstance(frame, np.ndarray):
+                logging.error(f"Frame is not a numpy array: {type(frame)}. Substituting black frame.")
+                frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
+            else:
+                logging.info(f"Frame shape: {frame.shape}, dtype: {frame.dtype}")
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
             av_frame.pts = pts
