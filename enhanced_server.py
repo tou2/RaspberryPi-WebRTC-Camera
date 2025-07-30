@@ -837,6 +837,14 @@ document.addEventListener('visibilitychange', () => {
             logging.info("Creating answer...")
             answer = await pc.createAnswer()
             logging.info(f"Created answer: type={answer.type}, sdp_length={len(answer.sdp) if answer.sdp else 0}")
+            
+            # Fix transceiver directions before setting local description
+            for transceiver in pc.getTransceivers():
+                if transceiver.sender.track and hasattr(transceiver.sender.track, '__class__'):
+                    if 'CameraTrack' in transceiver.sender.track.__class__.__name__:
+                        transceiver._direction = "sendonly"
+                        logging.info(f"Fixed transceiver direction to: {transceiver._direction}")
+            
             logging.info("Setting local description...")
             await pc.setLocalDescription(answer)
 
