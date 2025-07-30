@@ -933,23 +933,32 @@ document.addEventListener('visibilitychange', () => {
                 for idx, line in enumerate(sdp_lines):
                     if line.startswith('m=video'):
                         video_section_found = True
-                        # Check if a=mid:0 is present in the next few lines
-                        mid_present = False
-                        ice_present = False
+                        # Check if a=mid:0, ICE, and DTLS setup are present in the next few lines
+                        mid_present = false
+                        ice_present = false
+                        setup_present = false
                         for offset in range(1, 10):
                             if idx + offset < len(sdp_lines):
                                 if sdp_lines[idx + offset].startswith('a=mid:0'):
                                     mid_present = True
                                 if sdp_lines[idx + offset].startswith('a=ice-ufrag:'):
                                     ice_present = True
+                                if sdp_lines[idx + offset].startswith('a=setup:'):
+                                    setup_present = True
+                        insert_pos = idx + 1
                         if not mid_present:
-                            sdp_lines.insert(idx + 1, 'a=mid:0')
+                            sdp_lines.insert(insert_pos, 'a=mid:0')
                             mids = ['0']
                             logging.info("Inserted missing a=mid:0 after m=video")
+                            insert_pos += 1
                         if not ice_present:
-                            sdp_lines.insert(idx + 2, f'a=ice-ufrag:{ice_ufrag}')
-                            sdp_lines.insert(idx + 3, f'a=ice-pwd:{ice_pwd}')
+                            sdp_lines.insert(insert_pos, f'a=ice-ufrag:{ice_ufrag}')
+                            sdp_lines.insert(insert_pos + 1, f'a=ice-pwd:{ice_pwd}')
                             logging.info("Inserted missing ICE credentials after m=video")
+                            insert_pos += 2
+                        if not setup_present:
+                            sdp_lines.insert(insert_pos, 'a=setup:actpass')
+                            logging.info("Inserted missing DTLS setup line after m=video")
                         break
                 # If no video section, add one at the end
                 if not video_section_found:
@@ -959,8 +968,9 @@ document.addEventListener('visibilitychange', () => {
                     sdp_lines.append('a=mid:0')
                     sdp_lines.append(f'a=ice-ufrag:{ice_ufrag}')
                     sdp_lines.append(f'a=ice-pwd:{ice_pwd}')
+                    sdp_lines.append('a=setup:actpass')
                     mids = ['0']
-                    logging.info("Added missing m=video section with a=mid:0 and ICE credentials")
+                    logging.info("Added missing m=video section with a=mid:0, ICE credentials, and DTLS setup")
                 # Patch BUNDLE line
                 fixed_sdp_lines = []
                 for line in sdp_lines:
@@ -971,7 +981,7 @@ document.addEventListener('visibilitychange', () => {
                     fixed_sdp_lines.append(line)
                 # Update the answer with fixed SDP
                 answer = RTCSessionDescription(sdp='\n'.join(fixed_sdp_lines), type=answer.type)
-                logging.info("Applied robust SDP fixes for BUNDLE/MID, media section, and ICE credentials issues")
+                logging.info("Applied robust SDP fixes for BUNDLE/MID, media section, ICE credentials, and DTLS setup issues")
             
             # Fix transceiver directions before setting local description
             for transceiver in pc.getTransceivers():
