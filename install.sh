@@ -133,7 +133,7 @@ fi
 
 # Install rpicam tools for new camera support
 print_status "Installing rpicam tools for new camera modules..."
-sudo apt-get install -y rpicam-apps rpicam-dev
+sudo apt-get install -y rpicam-apps
 
 print_section "Python Environment Setup"
 

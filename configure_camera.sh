@@ -63,7 +63,7 @@ fi
 # Install required packages
 print_status "Installing camera packages..."
 sudo apt-get update
-sudo apt-get install -y rpicam-apps rpicam-dev
+sudo apt-get install -y rpicam-apps
 
 print_status "Configuration complete!"
 echo ""
