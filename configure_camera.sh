@@ -63,7 +63,7 @@ fi
 # Install required packages
 print_status "Installing camera packages..."
 sudo apt-get update
-sudo apt-get install -y libcamera-apps libcamera-dev
+sudo apt-get install -y rpicam-apps rpicam-dev
 
 print_status "Configuration complete!"
 echo ""
@@ -75,4 +75,4 @@ echo "  ./camera_test.sh"
 echo ""
 print_status "Or test manually:"
 echo "  vcgencmd get_camera"
-echo "  libcamera-hello --timeout 2000"
+echo "  rpicam-hello --timeout 2000"

@@ -131,9 +131,9 @@ if ! grep -q "dtparam=camera=on" /boot/config.txt; then
     print_status "Added dtparam=camera=on to boot config"
 fi
 
-# Install libcamera tools for new camera support
-print_status "Installing libcamera tools for new camera modules..."
-sudo apt-get install -y libcamera-apps libcamera-dev
+# Install rpicam tools for new camera support
+print_status "Installing rpicam tools for new camera modules..."
+sudo apt-get install -y rpicam-apps rpicam-dev
 
 print_section "Python Environment Setup"
 
@@ -208,17 +208,17 @@ if echo "$CAMERA_STATUS" | grep -q "detected=0"; then
     print_warning "Will continue installation - camera may work after reboot"
 fi
 
-# Test with libcamera first (for new cameras)
-if command -v libcamera-hello >/dev/null 2>&1; then
-    print_status "Testing with libcamera (recommended for new cameras)..."
-    if timeout 10 libcamera-hello --timeout 2000 --nopreview 2>/dev/null; then
-        print_status "Camera test successful with libcamera!"
+# Test with rpicam first (for new cameras)
+if command -v rpicam-hello >/dev/null 2>&1; then
+    print_status "Testing with rpicam (recommended for new cameras)..."
+    if timeout 10 rpicam-hello --timeout 2000 --nopreview 2>/dev/null; then
+        print_status "Camera test successful with rpicam!"
     else
-        print_warning "libcamera test failed - this may be normal during installation"
+        print_warning "rpicam test failed - this may be normal during installation"
     fi
 else
-    print_warning "libcamera tools not available - installing now..."
-    sudo apt-get install -y libcamera-apps
+    print_warning "rpicam tools not available - installing now..."
+    sudo apt-get install -y rpicam-apps
 fi
 
 # Test with raspistill (for legacy cameras)
@@ -461,30 +461,30 @@ else
 fi
 echo ""
 
-print_section "5. libcamera Test (New Cameras)"
-if command -v libcamera-hello >/dev/null 2>&1; then
-    print_status "Testing with libcamera-hello..."
-    if timeout 10 libcamera-hello --timeout 2000 --nopreview 2>/dev/null; then
-        echo "✓ libcamera test successful!"
+print_section "5. rpicam Test (New Cameras)"
+if command -v rpicam-hello >/dev/null 2>&1; then
+    print_status "Testing with rpicam-hello..."
+    if timeout 10 rpicam-hello --timeout 2000 --nopreview 2>/dev/null; then
+        echo "✓ rpicam test successful!"
     else
-        print_error "libcamera test failed"
+        print_error "rpicam test failed"
     fi
     
-    print_status "Testing with libcamera-still..."
-    if timeout 10 libcamera-still -t 2000 -o /tmp/test_libcamera.jpg --nopreview 2>/dev/null; then
-        if [ -f /tmp/test_libcamera.jpg ] && [ -s /tmp/test_libcamera.jpg ]; then
-            echo "✓ libcamera-still test successful!"
-            echo "  Image size: $(stat -c%s /tmp/test_libcamera.jpg) bytes"
-            rm -f /tmp/test_libcamera.jpg
+    print_status "Testing with rpicam-still..."
+    if timeout 10 rpicam-still -t 2000 -o /tmp/test_rpicam.jpg --nopreview 2>/dev/null; then
+        if [ -f /tmp/test_rpicam.jpg ] && [ -s /tmp/test_rpicam.jpg ]; then
+            echo "✓ rpicam-still test successful!"
+            echo "  Image size: $(stat -c%s /tmp/test_rpicam.jpg) bytes"
+            rm -f /tmp/test_rpicam.jpg
         else
-            print_error "libcamera-still failed to create image"
+            print_error "rpicam-still failed to create image"
         fi
     else
-        print_error "libcamera-still test failed"
+        print_error "rpicam-still test failed"
     fi
 else
-    print_warning "libcamera tools not installed"
-    echo "Install with: sudo apt-get install -y libcamera-apps"
+    print_warning "rpicam tools not installed"
+    echo "Install with: sudo apt-get install -y rpicam-apps"
 fi
 echo ""
 
@@ -563,13 +563,13 @@ echo "   - Add to /boot/config.txt: gpu_mem=128"
 echo "   - Reboot after changes: sudo reboot"
 echo ""
 echo "3. SOFTWARE:"
-echo "   - Install libcamera: sudo apt-get install -y libcamera-apps"
+echo "   - Install rpicam: sudo apt-get install -y rpicam-apps"
 echo "   - Load module: sudo modprobe bcm2835-v4l2"
 echo "   - Check permissions: sudo usermod -a -G video \$USER"
 echo ""
 echo "4. TEST COMMANDS:"
 echo "   - vcgencmd get_camera"
-echo "   - libcamera-hello --timeout 2000"
+echo "   - rpicam-hello --timeout 2000"
 echo "   - ls /dev/video*"
 echo ""
 

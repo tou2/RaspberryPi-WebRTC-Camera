@@ -129,7 +129,7 @@ echo ""
 print_section "5. Kernel Module Check"
 print_status "Checking loaded camera modules..."
 
-# Check for camera modules - new cameras use libcamera
+# Check for camera modules - new cameras use rpicam
 if lsmod | grep -q bcm2835_v4l2; then
     echo "✓ bcm2835_v4l2 module loaded (legacy camera)"
 elif lsmod | grep -q bcm2835-v4l2; then
@@ -137,15 +137,15 @@ elif lsmod | grep -q bcm2835-v4l2; then
 else
     print_warning "Legacy camera V4L2 module not loaded"
     echo "This is normal for new camera modules (Camera Module 3+)"
-    echo "New cameras use libcamera instead of V4L2"
+    echo "New cameras use rpicam instead of V4L2"
 fi
 
-# Check for libcamera support (new cameras)
-if command -v libcamera-hello >/dev/null 2>&1; then
-    echo "✓ libcamera tools available (supports new cameras)"
+# Check for rpicam support (new cameras)
+if command -v rpicam-hello >/dev/null 2>&1; then
+    echo "✓ rpicam tools available (supports new cameras)"
 else
-    print_warning "libcamera tools not found"
-    echo "Install with: sudo apt-get install -y libcamera-apps"
+    print_warning "rpicam tools not found"
+    echo "Install with: sudo apt-get install -y rpicam-apps"
 fi
 
 # Try to load legacy module anyway (for compatibility)
@@ -165,40 +165,40 @@ echo "Camera-related modules:"
 lsmod | grep -E "(bcm2835|camera|video)" || echo "No legacy camera modules found (normal for new cameras)"
 echo ""
 
-print_section "6. Hardware Test (libcamera & raspistill)"
+print_section "6. Hardware Test (rpicam & raspistill)"
 print_status "Testing camera with available tools..."
 
-# Test with libcamera first (for new cameras)
-if command -v libcamera-hello >/dev/null 2>&1; then
-    echo "Testing with libcamera (recommended for new cameras)..."
-    if timeout 10 libcamera-hello --timeout 2000 --nopreview 2>/tmp/libcamera_error.log; then
-        echo "✓ libcamera test successful!"
+# Test with rpicam first (for new cameras)
+if command -v rpicam-hello >/dev/null 2>&1; then
+    echo "Testing with rpicam (recommended for new cameras)..."
+    if timeout 10 rpicam-hello --timeout 2000 --nopreview 2>/tmp/rpicam_error.log; then
+        echo "✓ rpicam test successful!"
     else
-        print_error "libcamera test failed"
+        print_error "rpicam test failed"
         echo "Error log:"
-        cat /tmp/libcamera_error.log 2>/dev/null || echo "No error log available"
+        cat /tmp/rpicam_error.log 2>/dev/null || echo "No error log available"
     fi
-    rm -f /tmp/libcamera_error.log
+    rm -f /tmp/rpicam_error.log
     echo ""
 fi
 
-# Test with libcamera-still (for new cameras)
-if command -v libcamera-still >/dev/null 2>&1; then
-    echo "Taking test photo with libcamera-still..."
-    if timeout 15 libcamera-still -t 2000 -o /tmp/camera_libcamera_test.jpg --nopreview 2>/tmp/libcamera_still_error.log; then
-        if [ -f /tmp/camera_libcamera_test.jpg ] && [ -s /tmp/camera_libcamera_test.jpg ]; then
-            echo "✓ libcamera-still test successful!"
-            echo "Test image size: $(stat -c%s /tmp/camera_libcamera_test.jpg) bytes"
-            rm -f /tmp/camera_libcamera_test.jpg
+# Test with rpicam-still (for new cameras)
+if command -v rpicam-still >/dev/null 2>&1; then
+    echo "Taking test photo with rpicam-still..."
+    if timeout 15 rpicam-still -t 2000 -o /tmp/camera_rpicam_test.jpg --nopreview 2>/tmp/rpicam_still_error.log; then
+        if [ -f /tmp/camera_rpicam_test.jpg ] && [ -s /tmp/camera_rpicam_test.jpg ]; then
+            echo "✓ rpicam-still test successful!"
+            echo "Test image size: $(stat -c%s /tmp/camera_rpicam_test.jpg) bytes"
+            rm -f /tmp/camera_rpicam_test.jpg
         else
-            print_error "libcamera-still test failed - no image created"
+            print_error "rpicam-still test failed - no image created"
         fi
     else
-        print_error "libcamera-still command failed"
+        print_error "rpicam-still command failed"
         echo "Error log:"
-        cat /tmp/libcamera_still_error.log 2>/dev/null || echo "No error log available"
+        cat /tmp/rpicam_still_error.log 2>/dev/null || echo "No error log available"
     fi
-    rm -f /tmp/libcamera_still_error.log
+    rm -f /tmp/rpicam_still_error.log
     echo ""
 fi
 
@@ -217,13 +217,13 @@ if command -v raspistill >/dev/null 2>&1; then
         fi
     else
         print_warning "raspistill command failed (normal for new cameras)"
-        echo "New camera modules typically require libcamera tools"
+        echo "New camera modules typically require rpicam tools"
     fi
     rm -f /tmp/raspistill_error.log
 else
     print_warning "raspistill not available"
     echo "Install with: sudo apt-get install -y raspberrypi-utils"
-    echo "Note: New cameras work better with libcamera tools"
+    echo "Note: New cameras work better with rpicam tools"
 fi
 echo ""
 
@@ -353,13 +353,13 @@ echo ""
 print_section "10. Quick Fixes"
 print_status "Applying common fixes..."
 
-# Install libcamera tools if missing (for new cameras)
-if ! command -v libcamera-hello >/dev/null 2>&1; then
-    echo "Installing libcamera tools for new camera support..."
-    if sudo apt-get update && sudo apt-get install -y libcamera-apps; then
-        echo "✓ libcamera tools installed"
+# Install rpicam tools if missing (for new cameras)
+if ! command -v rpicam-hello >/dev/null 2>&1; then
+    echo "Installing rpicam tools for new camera support..."
+    if sudo apt-get update && sudo apt-get install -y rpicam-apps; then
+        echo "✓ rpicam tools installed"
     else
-        print_warning "Failed to install libcamera tools"
+        print_warning "Failed to install rpicam tools"
     fi
 fi
 
@@ -397,7 +397,7 @@ echo "   /boot/config.txt contains: camera_auto_detect=1"
 echo ""
 echo "3. Install required tools:"
 echo "   sudo apt-get update"
-echo "   sudo apt-get install -y libcamera-apps"
+echo "   sudo apt-get install -y rpicam-apps"
 echo ""
 echo "4. Manual module loading (legacy cameras):"
 echo "   sudo modprobe bcm2835-v4l2"
@@ -409,7 +409,7 @@ echo "   ./camera_test.sh"
 echo ""
 echo "6. Check for hardware issues:"
 echo "   vcgencmd get_camera"
-echo "   libcamera-hello --timeout 2000 (for new cameras)"
+echo "   rpicam-hello --timeout 2000 (for new cameras)"
 echo "   raspistill -t 1000 -o test.jpg (for legacy cameras)"
 echo ""
 
