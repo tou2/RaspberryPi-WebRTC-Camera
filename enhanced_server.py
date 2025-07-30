@@ -185,7 +185,7 @@ class PerformanceMonitor:
 
 class OptimizedCameraTrack(VideoStreamTrack):
     """
-    Highly optimized video track for Raspberry Pi Zero with adaptive quality.
+    Video track for Raspberry Pi Camera v3 using rpicam-hello only.
     """
     
     def __init__(self, config_manager: ConfigManager):
@@ -193,8 +193,6 @@ class OptimizedCameraTrack(VideoStreamTrack):
         self.config = config_manager
         self.camera_config = self.config.get_camera_config()
         self.performance_config = self.config.get_performance_config()
-        
-        self.cap = None
         self.monitor = PerformanceMonitor()
         self.last_capture_time = time.time()
         self.adaptive_quality = True
@@ -209,20 +207,8 @@ class OptimizedCameraTrack(VideoStreamTrack):
             self.monitor_thread.start()
     
     def _setup_camera(self):
-        """Auto-detect and initialize camera (v2: OpenCV, v3: rpicam)."""
+        """Initialize v3 camera using rpicam-hello only."""
         try:
-            # Try legacy camera (v2) first
-            self.cap = cv2.VideoCapture(self.camera_config['device_index'])
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.camera_config['width'])
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.camera_config['height'])
-            self.cap.set(cv2.CAP_PROP_FPS, self.camera_config['fps'])
-            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, self.camera_config['buffer_size'])
-            if self.cap.isOpened():
-                self.use_rpicam = False
-                logging.info("Using legacy camera (v2) via OpenCV VideoCapture")
-                return
-            # If not available, use rpicam (v3)
-            self.use_rpicam = True
             self.rpicam_cmd = [
                 "rpicam-hello",
                 "--timeout", "0",
@@ -238,18 +224,11 @@ class OptimizedCameraTrack(VideoStreamTrack):
             )
             logging.info(f"Using Raspberry Pi Camera v3 via rpicam-hello: {' '.join(self.rpicam_cmd)}")
         except Exception as e:
-            logging.error(f"Failed to initialize camera: {e}")
+            logging.error(f"Failed to initialize v3 camera: {e}")
             raise
 
     def _setup_optimizations(self):
         """Setup performance optimizations."""
-        # Set thread count for OpenCV
-        if self.performance_config['video_threads'] > 0:
-            cv2.setNumThreads(self.performance_config['video_threads'])
-        
-        # Enable optimizations
-        cv2.setUseOptimized(True)
-        
         logging.info("Performance optimizations enabled")
     
     def _monitor_performance(self):
@@ -284,41 +263,32 @@ class OptimizedCameraTrack(VideoStreamTrack):
                 time.sleep(5)
     
     async def recv(self):
-        """Receive the next video frame from the selected camera."""
+        """Receive the next video frame from v3 camera."""
         pts, time_base = await self.next_timestamp()
         try:
-            if hasattr(self, 'use_rpicam') and self.use_rpicam:
-                # Read JPEG frame from rpicam stdout
-                jpeg_data = b''
-                while True:
-                    chunk = self.rpicam_proc.stdout.read(4096)
-                    if not chunk:
-                        break
-                    jpeg_data += chunk
-                    if b'\xff\xd9' in chunk:
-                        break
-                if not jpeg_data:
-                    frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
-                else:
-                    arr = np.frombuffer(jpeg_data, dtype=np.uint8)
-                    frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-                    if frame is None:
-                        frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
+            # Read JPEG frame from rpicam stdout
+            jpeg_data = b''
+            while True:
+                chunk = self.rpicam_proc.stdout.read(4096)
+                if not chunk:
+                    break
+                jpeg_data += chunk
+                if b'\xff\xd9' in chunk:
+                    break
+            if not jpeg_data:
+                frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
             else:
-                # Use OpenCV for legacy camera
-                if self.cap is None or not self.cap.isOpened():
+                arr = np.frombuffer(jpeg_data, dtype=np.uint8)
+                frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                if frame is None:
                     frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
-                else:
-                    ret, frame = self.cap.read()
-                    if not ret:
-                        frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
             av_frame.pts = pts
             av_frame.time_base = time_base
             return av_frame
         except Exception as e:
-            logging.error(f"Error reading frame from camera: {e}")
+            logging.error(f"Error reading frame from v3 camera: {e}")
             frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
             av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
             av_frame.pts = pts
@@ -326,14 +296,11 @@ class OptimizedCameraTrack(VideoStreamTrack):
             return av_frame
 
     def stop(self):
-        """Clean up camera resources."""
-        if hasattr(self, 'use_rpicam') and self.use_rpicam and hasattr(self, 'rpicam_proc') and self.rpicam_proc:
+        """Clean up v3 camera resources."""
+        if hasattr(self, 'rpicam_proc') and self.rpicam_proc:
             self.rpicam_proc.terminate()
             self.rpicam_proc.wait()
             logging.info("rpicam-hello process terminated")
-        if hasattr(self, 'cap') and self.cap:
-            self.cap.release()
-            logging.info("OpenCV camera released")
 
 class WebRTCServer:
     """Enhanced WebRTC server with configuration support."""
