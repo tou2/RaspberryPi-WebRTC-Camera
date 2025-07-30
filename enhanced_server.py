@@ -915,16 +915,29 @@ document.addEventListener('visibilitychange', () => {
 
                 # Find all mids in media sections
                 mids = [line.split(':', 1)[1].strip() for line in sdp_lines if line.startswith('a=mid:')]
-                # If no mids, force one
-                if not mids:
-                    # Find first video media section
-                    for idx, line in enumerate(sdp_lines):
-                        if line.startswith('m=video'):
-                            # Insert a=mid:0 after m=video
-                            sdp_lines.insert(idx+1, 'a=mid:0')
+                video_section_found = False
+                for idx, line in enumerate(sdp_lines):
+                    if line.startswith('m=video'):
+                        video_section_found = True
+                        # Check if a=mid:0 is present in the next few lines
+                        mid_present = False
+                        for offset in range(1, 6):
+                            if idx + offset < len(sdp_lines) and sdp_lines[idx + offset].startswith('a=mid:0'):
+                                mid_present = True
+                                break
+                        if not mid_present:
+                            sdp_lines.insert(idx + 1, 'a=mid:0')
                             mids = ['0']
                             logging.info("Inserted missing a=mid:0 after m=video")
-                            break
+                        break
+                # If no video section, add one at the end
+                if not video_section_found:
+                    sdp_lines.append('m=video 9 UDP/TLS/RTP/SAVPF 96')
+                    sdp_lines.append('c=IN IP4 0.0.0.0')
+                    sdp_lines.append('a=rtpmap:96 VP8/90000')
+                    sdp_lines.append('a=mid:0')
+                    mids = ['0']
+                    logging.info("Added missing m=video section with a=mid:0")
                 # Patch BUNDLE line
                 fixed_sdp_lines = []
                 for line in sdp_lines:
@@ -935,7 +948,7 @@ document.addEventListener('visibilitychange', () => {
                     fixed_sdp_lines.append(line)
                 # Update the answer with fixed SDP
                 answer = RTCSessionDescription(sdp='\n'.join(fixed_sdp_lines), type=answer.type)
-                logging.info("Applied robust SDP fixes for BUNDLE/MID issues")
+                logging.info("Applied robust SDP fixes for BUNDLE/MID and media section issues")
             
             # Fix transceiver directions before setting local description
             for transceiver in pc.getTransceivers():
