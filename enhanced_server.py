@@ -222,7 +222,17 @@ class OptimizedCameraTrack(VideoStreamTrack):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-            logging.info(f"Using Raspberry Pi Camera v3 via rpicam-hello: {' '.join(self.rpicam_cmd)}")
+            logging.info(f"Using Raspberry Pi Camera v3 via rpicam-hello: {' '.join(self.rpicam_cmd)} (PID: {self.rpicam_proc.pid})")
+            # Log initial stderr output (first 256 bytes)
+            try:
+                import time
+                time.sleep(0.5)  # Give process a moment to start
+                if self.rpicam_proc.stderr:
+                    err_start = self.rpicam_proc.stderr.read(256)
+                    if err_start:
+                        logging.info(f"rpicam-hello initial stderr: {err_start.decode(errors='ignore').strip()}")
+            except Exception as e:
+                logging.warning(f"Could not read initial rpicam-hello stderr: {e}")
         except Exception as e:
             logging.error(f"Failed to initialize v3 camera: {e}")
             raise
@@ -264,10 +274,12 @@ class OptimizedCameraTrack(VideoStreamTrack):
     
     async def recv(self):
         """Receive the next video frame from v3 camera."""
+        import time
         pts, time_base = await self.next_timestamp()
         try:
             # Read JPEG frame from rpicam stdout
             jpeg_data = b''
+            start_time = time.time()
             while True:
                 chunk = self.rpicam_proc.stdout.read(4096)
                 if not chunk:
@@ -275,6 +287,10 @@ class OptimizedCameraTrack(VideoStreamTrack):
                 jpeg_data += chunk
                 if b'\xff\xd9' in chunk:
                     break
+                if time.time() - start_time > 2.0:
+                    logging.warning("Timeout waiting for JPEG frame from rpicam-hello (2s)")
+                    break
+            logging.info(f"Read {len(jpeg_data)} bytes from rpicam-hello. First 32 bytes: {jpeg_data[:32].hex()}")
             if not jpeg_data:
                 err_output = self.rpicam_proc.stderr.read().decode(errors='ignore')
                 logging.error(f"rpicam-hello produced no JPEG data. Is the camera connected and working? rpicam-hello stderr: {err_output}")
