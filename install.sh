@@ -169,6 +169,7 @@ EOF
 
 # Install Python packages
 print_status "Installing Python packages (this may take a while on Pi Zero)..."
+pip install aiohttp aiortc opencv-python av numpy uvloop psutil
 pip install -r requirements.txt
 
 print_section "OpenCV Optimization"

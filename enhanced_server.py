@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Dict, Set, Optional
 
 import cv2
-from aiohttp import web, web_runner, web_site
+from aiohttp import web, web_runner
 from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
 from aiortc.contrib.media import MediaPlayer
 from av import VideoFrame
@@ -867,7 +867,7 @@ document.addEventListener('visibilitychange', () => {
         runner = web_runner.AppRunner(self.app)
         await runner.setup()
         
-        site = web_site.TCPSite(
+        site = web.TCPSite(
             runner, 
             self.network_config['host'], 
             self.network_config['port']
