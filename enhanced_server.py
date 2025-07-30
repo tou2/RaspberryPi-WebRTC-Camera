@@ -824,8 +824,9 @@ document.addEventListener('visibilitychange', () => {
             # Add optimized video track
             try:
                 video_track = OptimizedCameraTrack(self.config)
-                pc.addTrack(video_track)
-                logging.info("Added video track to peer connection")
+                # Add track with explicit direction to avoid aiortc SDP direction bug
+                transceiver = pc.addTransceiver(video_track, direction="sendonly")
+                logging.info(f"Added video track to peer connection with direction: {transceiver.direction}")
             except Exception as track_error:
                 logging.error(f"Failed to create/add video track: {track_error}")
                 raise
