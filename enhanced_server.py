@@ -276,11 +276,13 @@ class OptimizedCameraTrack(VideoStreamTrack):
                 if b'\xff\xd9' in chunk:
                     break
             if not jpeg_data:
+                logging.error("rpicam-hello produced no JPEG data. Is the camera connected and working?")
                 frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
             else:
                 arr = np.frombuffer(jpeg_data, dtype=np.uint8)
                 frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
                 if frame is None:
+                    logging.error("cv2.imdecode failed to decode JPEG data from rpicam-hello.")
                     frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
