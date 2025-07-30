@@ -18,12 +18,11 @@ from typing import Dict, Set, Optional
 
 import cv2
 from aiohttp import web, web_runner
-from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
+from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack, RTCConfiguration, RTCIceServer
 from aiortc.contrib.media import MediaPlayer
 from av import VideoFrame
 import numpy as np
 import subprocess
-from aiortc import RTCConfiguration, RTCIceServer
 
 # Try to import uvloop for better performance on Linux
 try:
@@ -895,10 +894,9 @@ document.addEventListener('visibilitychange', () => {
                 transceiver = pc.addTransceiver(video_track, direction="sendonly")
                 logging.info(f"Added video track to peer connection with direction: {transceiver.direction}")
                 
-                # Ensure the transceiver has proper mid set
-                if not hasattr(transceiver, 'mid') or transceiver.mid is None:
-                    logging.warning("Transceiver MID not set, forcing assignment")
-                    transceiver._mid = "0"  # Force a valid MID
+                # Force MID assignment before creating answer - this is critical for BUNDLE groups
+                transceiver._mid = "0"
+                logging.info(f"Assigned MID '0' to video transceiver")
                     
             except Exception as track_error:
                 logging.error(f"Failed to create/add video track: {track_error}")
@@ -908,18 +906,36 @@ document.addEventListener('visibilitychange', () => {
             answer = await pc.createAnswer()
             logging.info(f"Created answer: type={answer.type}, sdp_length={len(answer.sdp) if answer.sdp else 0}")
             
-            # Debug: Log the SDP content to identify issues
+            # Debug and robustly fix SDP content before setting local description
             if answer.sdp:
                 sdp_lines = answer.sdp.split('\n')
                 logging.debug("Answer SDP preview:")
-                for i, line in enumerate(sdp_lines[:10]):  # Log first 10 lines
+                for i, line in enumerate(sdp_lines[:10]):
                     logging.debug(f"  {i}: {line}")
-                
-                # Check for BUNDLE and MID issues
-                bundle_lines = [line for line in sdp_lines if 'a=group:BUNDLE' in line]
-                mid_lines = [line for line in sdp_lines if 'a=mid:' in line]
-                logging.debug(f"BUNDLE lines: {bundle_lines}")
-                logging.debug(f"MID lines: {mid_lines}")
+
+                # Find all mids in media sections
+                mids = [line.split(':', 1)[1].strip() for line in sdp_lines if line.startswith('a=mid:')]
+                # If no mids, force one
+                if not mids:
+                    # Find first video media section
+                    for idx, line in enumerate(sdp_lines):
+                        if line.startswith('m=video'):
+                            # Insert a=mid:0 after m=video
+                            sdp_lines.insert(idx+1, 'a=mid:0')
+                            mids = ['0']
+                            logging.info("Inserted missing a=mid:0 after m=video")
+                            break
+                # Patch BUNDLE line
+                fixed_sdp_lines = []
+                for line in sdp_lines:
+                    if line.startswith('a=group:BUNDLE'):
+                        # Replace with correct mids
+                        line = 'a=group:BUNDLE ' + (' '.join(mids) if mids else '0')
+                        logging.info(f"Fixed BUNDLE line: {line}")
+                    fixed_sdp_lines.append(line)
+                # Update the answer with fixed SDP
+                answer = RTCSessionDescription(sdp='\n'.join(fixed_sdp_lines), type=answer.type)
+                logging.info("Applied robust SDP fixes for BUNDLE/MID issues")
             
             # Fix transceiver directions before setting local description
             for transceiver in pc.getTransceivers():
