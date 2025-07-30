@@ -866,10 +866,12 @@ document.addEventListener('visibilitychange', () => {
             offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
             
             # Create new peer connection
-            config = RTCConfiguration([
-                RTCIceServer(urls=["stun:stun.l.google.com:19302"]),
-                RTCIceServer(urls=["stun:stun1.l.google.com:19302"])
-            ])
+            config = RTCConfiguration(
+                iceServers=[
+                    RTCIceServer(urls=["stun:stun.l.google.com:19302"]),
+                    RTCIceServer(urls=["stun:stun1.l.google.com:19302"])
+                ]
+            )
             pc = RTCPeerConnection(configuration=config)
             logging.info(f"Created RTCPeerConnection with config: {config}")
             
