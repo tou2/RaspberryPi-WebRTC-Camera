@@ -23,6 +23,7 @@ from aiortc.contrib.media import MediaPlayer
 from av import VideoFrame
 import numpy as np
 import subprocess
+from aiortc import RTCConfiguration, RTCIceServer
 
 # Try to import uvloop for better performance on Linux
 try:
@@ -810,12 +811,11 @@ document.addEventListener('visibilitychange', () => {
             offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
             
             # Create new peer connection
-            pc = RTCPeerConnection(configuration={
-                "iceServers": [
-                    {"urls": "stun:stun.l.google.com:19302"},
-                    {"urls": "stun:stun1.l.google.com:19302"}
-                ]
-            })
+            config = RTCConfiguration([
+                RTCIceServer(urls="stun:stun.l.google.com:19302"),
+                RTCIceServer(urls="stun:stun1.l.google.com:19302")
+            ])
+            pc = RTCPeerConnection(configuration=config)
             
             self.peer_connections.add(pc)
             self.connection_count += 1
