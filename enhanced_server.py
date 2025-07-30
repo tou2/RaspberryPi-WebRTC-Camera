@@ -884,22 +884,42 @@ document.addEventListener('visibilitychange', () => {
                 if pc.connectionState in ["closed", "failed"]:
                     self.peer_connections.discard(pc)
             
-            # Add optimized video track
+            # Set remote description and create answer
+            logging.info("Setting remote description...")
+            await pc.setRemoteDescription(offer)
+            
+            # Add optimized video track AFTER setting remote description
             try:
                 video_track = OptimizedCameraTrack(self.config)
-                # Add track with explicit direction to avoid aiortc SDP direction bug
+                # Add track with explicit direction and kind to avoid aiortc SDP direction bug
                 transceiver = pc.addTransceiver(video_track, direction="sendonly")
                 logging.info(f"Added video track to peer connection with direction: {transceiver.direction}")
+                
+                # Ensure the transceiver has proper mid set
+                if not hasattr(transceiver, 'mid') or transceiver.mid is None:
+                    logging.warning("Transceiver MID not set, forcing assignment")
+                    transceiver._mid = "0"  # Force a valid MID
+                    
             except Exception as track_error:
                 logging.error(f"Failed to create/add video track: {track_error}")
                 raise
             
-            # Set remote description and create answer
-            logging.info("Setting remote description...")
-            await pc.setRemoteDescription(offer)
             logging.info("Creating answer...")
             answer = await pc.createAnswer()
             logging.info(f"Created answer: type={answer.type}, sdp_length={len(answer.sdp) if answer.sdp else 0}")
+            
+            # Debug: Log the SDP content to identify issues
+            if answer.sdp:
+                sdp_lines = answer.sdp.split('\n')
+                logging.debug("Answer SDP preview:")
+                for i, line in enumerate(sdp_lines[:10]):  # Log first 10 lines
+                    logging.debug(f"  {i}: {line}")
+                
+                # Check for BUNDLE and MID issues
+                bundle_lines = [line for line in sdp_lines if 'a=group:BUNDLE' in line]
+                mid_lines = [line for line in sdp_lines if 'a=mid:' in line]
+                logging.debug(f"BUNDLE lines: {bundle_lines}")
+                logging.debug(f"MID lines: {mid_lines}")
             
             # Fix transceiver directions before setting local description
             for transceiver in pc.getTransceivers():
