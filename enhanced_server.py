@@ -826,9 +826,17 @@ document.addEventListener('visibilitychange', () => {
             await pc.setRemoteDescription(offer)
             answer = await pc.createAnswer()
             await pc.setLocalDescription(answer)
-            
+
+            # Ensure localDescription is set before returning
+            if pc.localDescription is None:
+                import asyncio
+                await asyncio.sleep(0.1)
+            if pc.localDescription is None:
+                logging.error("pc.localDescription is None after setLocalDescription. Cannot return answer.")
+                return web.json_response({"error": "Internal server error: no SDP answer generated"}, status=500)
+
             logging.info(f"New connection established. Active connections: {len(self.peer_connections)}")
-            
+
             return web.json_response({
                 "sdp": pc.localDescription.sdp,
                 "type": pc.localDescription.type
