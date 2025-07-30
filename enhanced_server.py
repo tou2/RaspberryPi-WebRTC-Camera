@@ -842,11 +842,37 @@ document.addEventListener('visibilitychange', () => {
             for transceiver in pc.getTransceivers():
                 if transceiver.sender.track and hasattr(transceiver.sender.track, '__class__'):
                     if 'CameraTrack' in transceiver.sender.track.__class__.__name__:
+                        # Set both direction attributes to avoid aiortc SDP direction bug
                         transceiver._direction = "sendonly"
-                        logging.info(f"Fixed transceiver direction to: {transceiver._direction}")
+                        transceiver._offerDirection = "sendonly"
+                        transceiver._currentDirection = "sendonly"
+                        logging.info(f"Fixed transceiver directions: direction={transceiver._direction}, offerDirection={getattr(transceiver, '_offerDirection', 'None')}")
             
             logging.info("Setting local description...")
-            await pc.setLocalDescription(answer)
+            try:
+                await pc.setLocalDescription(answer)
+            except ValueError as ve:
+                if "None is not in list" in str(ve):
+                    logging.error("Encountered aiortc SDP direction bug, attempting workaround...")
+                    # Patch the problematic method temporarily
+                    import aiortc.rtcpeerconnection as rtc_module
+                    original_and_direction = rtc_module.and_direction
+                    
+                    def patched_and_direction(a, b):
+                        if a is None:
+                            a = "sendonly"
+                        if b is None:
+                            b = "sendonly"
+                        return original_and_direction(a, b)
+                    
+                    rtc_module.and_direction = patched_and_direction
+                    try:
+                        await pc.setLocalDescription(answer)
+                        logging.info("Successfully set local description with workaround")
+                    finally:
+                        rtc_module.and_direction = original_and_direction
+                else:
+                    raise
 
             # Ensure localDescription is set before returning
             if pc.localDescription is None:
