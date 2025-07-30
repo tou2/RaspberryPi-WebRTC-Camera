@@ -222,7 +222,8 @@ class OptimizedCameraTrack(VideoStreamTrack):
             self.rpicam_proc = subprocess.Popen(
                 self.rpicam_cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                stderr=subprocess.PIPE,
+                bufsize=0  # Unbuffered for real-time streaming
             )
             logging.info(f"Using Raspberry Pi Camera v3 via rpicam-vid: {' '.join(self.rpicam_cmd)} (PID: {self.rpicam_proc.pid})")
             # Log initial stderr output (first 256 bytes)
@@ -280,50 +281,74 @@ class OptimizedCameraTrack(VideoStreamTrack):
         
         try:
             # Read MJPEG frame from rpicam-vid stdout
-            # Look for JPEG markers to identify frame boundaries
+            # MJPEG streams have frame boundaries marked by SOI (0xFFD8) and EOI (0xFFD9)
             frame_data = b''
+            found_start = False
             
-            # Read until we find a complete JPEG frame
             while True:
-                chunk = self.rpicam_proc.stdout.read(8192)
+                # Read small chunks to avoid blocking
+                chunk = self.rpicam_proc.stdout.read(1024)
                 if not chunk:
-                    logging.warning("No data from rpicam-vid")
+                    logging.warning("No data from rpicam-vid - camera process may have stopped")
+                    # Check if process is still running
+                    if self.rpicam_proc.poll() is not None:
+                        logging.error(f"rpicam-vid process terminated with return code: {self.rpicam_proc.poll()}")
+                        # Try to read stderr for error info
+                        try:
+                            stderr_data = self.rpicam_proc.stderr.read()
+                            if stderr_data:
+                                logging.error(f"rpicam-vid stderr: {stderr_data.decode(errors='ignore')}")
+                        except:
+                            pass
                     break
-                    
+                
                 frame_data += chunk
                 
-                # Look for JPEG end marker
-                if b'\xff\xd9' in frame_data:
-                    # Find the end of this frame
+                # Look for JPEG start marker (SOI: 0xFFD8)
+                if not found_start and b'\xff\xd8' in frame_data:
+                    # Find the start of JPEG
+                    start_pos = frame_data.find(b'\xff\xd8')
+                    frame_data = frame_data[start_pos:]  # Keep only from JPEG start
+                    found_start = True
+                
+                # Look for JPEG end marker (EOI: 0xFFD9)
+                if found_start and b'\xff\xd9' in frame_data:
+                    # Find the end of this JPEG frame
                     end_pos = frame_data.find(b'\xff\xd9') + 2
                     complete_frame = frame_data[:end_pos]
                     
-                    # Keep remaining data for next frame
-                    remaining = frame_data[end_pos:]
-                    
                     # Decode the JPEG frame
-                    if len(complete_frame) > 100:  # Valid JPEG should be larger
+                    if len(complete_frame) > 100:  # Valid JPEG should be reasonably sized
                         arr = np.frombuffer(complete_frame, dtype=np.uint8)
                         frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
                         
                         if frame is not None:
-                            # Convert BGR to RGB
+                            # Convert BGR to RGB for WebRTC
                             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                             
                             # Update performance stats
                             self.monitor.update_frame_stats()
                             
-                            # Create VideoFrame
+                            # Create VideoFrame with proper timing
                             av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
                             av_frame.pts = pts
                             av_frame.time_base = time_base
+                            
+                            logging.debug(f"Successfully decoded frame: {frame.shape}")
                             return av_frame
+                        else:
+                            logging.warning(f"Failed to decode JPEG frame of {len(complete_frame)} bytes")
                     
-                    # If frame decoding failed, continue reading
-                    frame_data = remaining
+                    # Reset for next frame - keep any remaining data
+                    remaining_data = frame_data[end_pos:]
+                    frame_data = remaining_data
+                    found_start = b'\xff\xd8' in frame_data
                     
+                    if not found_start and len(frame_data) > 10000:  # Clear buffer if too large
+                        frame_data = b''
+                        
         except Exception as e:
-            logging.error(f"Error reading frame from v3 camera: {e}")
+            logging.error(f"Error reading frame from v3 camera: {e}", exc_info=True)
         
         # Return black frame if camera read failed
         logging.warning("Returning black frame due to camera read failure")
