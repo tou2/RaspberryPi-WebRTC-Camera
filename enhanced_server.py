@@ -69,7 +69,7 @@ class ConfigManager:
                 'frame_drop_strategy': 'smart'
             },
             'logging': {
-                'level': 'INFO',
+                'level': 'DEBUG',
                 'log_performance': 'true',
                 'log_file': ''
             },
@@ -280,72 +280,40 @@ class OptimizedCameraTrack(VideoStreamTrack):
         pts, time_base = await self.next_timestamp()
         
         try:
-            # Read MJPEG frame from rpicam-vid stdout
-            # MJPEG streams have frame boundaries marked by SOI (0xFFD8) and EOI (0xFFD9)
-            frame_data = b''
-            found_start = False
+            # Check if rpicam process is still running
+            if self.rpicam_proc.poll() is not None:
+                logging.error(f"rpicam-vid process has terminated with code: {self.rpicam_proc.poll()}")
+                raise RuntimeError("Camera process terminated")
             
-            while True:
-                # Read small chunks to avoid blocking
-                chunk = self.rpicam_proc.stdout.read(1024)
-                if not chunk:
-                    logging.warning("No data from rpicam-vid - camera process may have stopped")
-                    # Check if process is still running
-                    if self.rpicam_proc.poll() is not None:
-                        logging.error(f"rpicam-vid process terminated with return code: {self.rpicam_proc.poll()}")
-                        # Try to read stderr for error info
-                        try:
-                            stderr_data = self.rpicam_proc.stderr.read()
-                            if stderr_data:
-                                logging.error(f"rpicam-vid stderr: {stderr_data.decode(errors='ignore')}")
-                        except:
-                            pass
-                    break
+            # Use asyncio to avoid blocking the event loop
+            loop = asyncio.get_event_loop()
+            
+            # Read data in a non-blocking way
+            frame_data = await loop.run_in_executor(None, self._read_mjpeg_frame)
+            
+            if frame_data and len(frame_data) > 100:
+                # Decode the JPEG frame
+                arr = np.frombuffer(frame_data, dtype=np.uint8)
+                frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
                 
-                frame_data += chunk
-                
-                # Look for JPEG start marker (SOI: 0xFFD8)
-                if not found_start and b'\xff\xd8' in frame_data:
-                    # Find the start of JPEG
-                    start_pos = frame_data.find(b'\xff\xd8')
-                    frame_data = frame_data[start_pos:]  # Keep only from JPEG start
-                    found_start = True
-                
-                # Look for JPEG end marker (EOI: 0xFFD9)
-                if found_start and b'\xff\xd9' in frame_data:
-                    # Find the end of this JPEG frame
-                    end_pos = frame_data.find(b'\xff\xd9') + 2
-                    complete_frame = frame_data[:end_pos]
+                if frame is not None:
+                    # Convert BGR to RGB for WebRTC
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     
-                    # Decode the JPEG frame
-                    if len(complete_frame) > 100:  # Valid JPEG should be reasonably sized
-                        arr = np.frombuffer(complete_frame, dtype=np.uint8)
-                        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-                        
-                        if frame is not None:
-                            # Convert BGR to RGB for WebRTC
-                            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                            
-                            # Update performance stats
-                            self.monitor.update_frame_stats()
-                            
-                            # Create VideoFrame with proper timing
-                            av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
-                            av_frame.pts = pts
-                            av_frame.time_base = time_base
-                            
-                            logging.debug(f"Successfully decoded frame: {frame.shape}")
-                            return av_frame
-                        else:
-                            logging.warning(f"Failed to decode JPEG frame of {len(complete_frame)} bytes")
+                    # Update performance stats
+                    self.monitor.update_frame_stats()
                     
-                    # Reset for next frame - keep any remaining data
-                    remaining_data = frame_data[end_pos:]
-                    frame_data = remaining_data
-                    found_start = b'\xff\xd8' in frame_data
+                    # Create VideoFrame with proper timing
+                    av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
+                    av_frame.pts = pts
+                    av_frame.time_base = time_base
                     
-                    if not found_start and len(frame_data) > 10000:  # Clear buffer if too large
-                        frame_data = b''
+                    logging.debug(f"Successfully decoded frame: {frame.shape}")
+                    return av_frame
+                else:
+                    logging.warning(f"Failed to decode JPEG frame of {len(frame_data)} bytes")
+            else:
+                logging.warning("No valid frame data received from camera")
                         
         except Exception as e:
             logging.error(f"Error reading frame from v3 camera: {e}", exc_info=True)
@@ -357,6 +325,61 @@ class OptimizedCameraTrack(VideoStreamTrack):
         av_frame.pts = pts
         av_frame.time_base = time_base
         return av_frame
+
+    def _read_mjpeg_frame(self):
+        """Read a single MJPEG frame from rpicam-vid stdout (blocking operation)."""
+        frame_data = b''
+        found_start = False
+        max_frame_size = 1024 * 1024  # 1MB max frame size
+        read_timeout = 0.1  # 100ms timeout for each read
+        
+        import select
+        import time
+        
+        start_time = time.time()
+        
+        while time.time() - start_time < 1.0:  # 1 second total timeout
+            # Check if data is available to read
+            ready, _, _ = select.select([self.rpicam_proc.stdout], [], [], read_timeout)
+            
+            if not ready:
+                continue  # No data available, try again
+                
+            try:
+                # Read small chunks to avoid blocking
+                chunk = self.rpicam_proc.stdout.read(4096)
+                if not chunk:
+                    logging.warning("No data chunk from rpicam-vid")
+                    break
+                
+                frame_data += chunk
+                
+                # Look for JPEG start marker (SOI: 0xFFD8)
+                if not found_start and b'\xff\xd8' in frame_data:
+                    start_pos = frame_data.find(b'\xff\xd8')
+                    frame_data = frame_data[start_pos:]  # Keep only from JPEG start
+                    found_start = True
+                    logging.debug("Found JPEG start marker")
+                
+                # Look for JPEG end marker (EOI: 0xFFD9)
+                if found_start and b'\xff\xd9' in frame_data:
+                    end_pos = frame_data.find(b'\xff\xd9') + 2
+                    complete_frame = frame_data[:end_pos]
+                    logging.debug(f"Found complete JPEG frame: {len(complete_frame)} bytes")
+                    return complete_frame
+                
+                # Prevent memory overflow
+                if len(frame_data) > max_frame_size:
+                    logging.warning("Frame data too large, resetting buffer")
+                    frame_data = b''
+                    found_start = False
+                    
+            except Exception as e:
+                logging.error(f"Error reading chunk from rpicam-vid: {e}")
+                break
+        
+        logging.warning("Timeout reading MJPEG frame")
+        return None
 
     def stop(self):
         """Clean up v3 camera resources."""
