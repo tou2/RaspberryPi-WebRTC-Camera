@@ -22,6 +22,7 @@ from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
 from aiortc.contrib.media import MediaPlayer
 from av import VideoFrame
 import numpy as np
+import subprocess
 
 # Try to import uvloop for better performance on Linux
 try:
@@ -207,42 +208,38 @@ class OptimizedCameraTrack(VideoStreamTrack):
             self.monitor_thread.start()
     
     def _setup_camera(self):
-        """Initialize camera with Raspberry Pi optimizations."""
+        """Auto-detect and initialize camera (v2: OpenCV, v3: rpicam)."""
         try:
-            device_index = self.camera_config['device_index']
-            self.cap = cv2.VideoCapture(device_index)
-            
-            if not self.cap.isOpened():
-                raise RuntimeError(f"Cannot open camera {device_index}")
-            
-            # Basic settings
+            # Try legacy camera (v2) first
+            self.cap = cv2.VideoCapture(self.camera_config['device_index'])
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.camera_config['width'])
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.camera_config['height'])
             self.cap.set(cv2.CAP_PROP_FPS, self.camera_config['fps'])
             self.cap.set(cv2.CAP_PROP_BUFFERSIZE, self.camera_config['buffer_size'])
-            
-            # Raspberry Pi specific optimizations
-            if self.config.config.getboolean('advanced', 'raspberry_pi_optimizations'):
-                # Use MJPEG for better performance
-                fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
-                self.cap.set(cv2.CAP_PROP_FOURCC, fourcc)
-                
-                # Disable auto-exposure for consistent performance
-                self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
-                
-                # Set manual exposure for lower latency
-                self.cap.set(cv2.CAP_PROP_EXPOSURE, -6)
-                
-                # Optimize for speed over quality
-                self.cap.set(cv2.CAP_PROP_BRIGHTNESS, 50)
-                self.cap.set(cv2.CAP_PROP_CONTRAST, 50)
-            
-            logging.info(f"Camera initialized: {self.camera_config['width']}x{self.camera_config['height']} @ {self.camera_config['fps']}fps")
-            
+            if self.cap.isOpened():
+                self.use_rpicam = False
+                logging.info("Using legacy camera (v2) via OpenCV VideoCapture")
+                return
+            # If not available, use rpicam (v3)
+            self.use_rpicam = True
+            self.rpicam_cmd = [
+                "rpicam-hello",
+                "--timeout", "0",
+                "--width", str(self.camera_config['width']),
+                "--height", str(self.camera_config['height']),
+                "--nopreview",
+                "--output", "-"
+            ]
+            self.rpicam_proc = subprocess.Popen(
+                self.rpicam_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            logging.info(f"Using Raspberry Pi Camera v3 via rpicam-hello: {' '.join(self.rpicam_cmd)}")
         except Exception as e:
             logging.error(f"Failed to initialize camera: {e}")
             raise
-    
+
     def _setup_optimizations(self):
         """Setup performance optimizations."""
         # Set thread count for OpenCV
@@ -286,57 +283,56 @@ class OptimizedCameraTrack(VideoStreamTrack):
                 time.sleep(5)
     
     async def recv(self):
-        """Receive the next video frame with optimizations."""
+        """Receive the next video frame from the selected camera."""
         pts, time_base = await self.next_timestamp()
-        
-        current_time = time.time()
-        
-        # Frame dropping for latency control
-        if self.performance_config['low_latency_mode']:
-            time_since_last = current_time - self.last_capture_time
-            target_interval = 1.0 / self.camera_config['fps']
-            
-            if time_since_last < target_interval * 0.8:
-                # Skip frame to maintain timing
-                await asyncio.sleep(target_interval - time_since_last)
-        
-        self.last_capture_time = current_time
-        
-        if self.cap is None or not self.cap.isOpened():
-            # Return black frame as fallback
-            frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
-            self.monitor.update_frame_stats(dropped=True)
-        else:
-            ret, frame = self.cap.read()
-            if not ret:
-                frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
-                self.monitor.update_frame_stats(dropped=True)
+        try:
+            if hasattr(self, 'use_rpicam') and self.use_rpicam:
+                # Read JPEG frame from rpicam stdout
+                jpeg_data = b''
+                while True:
+                    chunk = self.rpicam_proc.stdout.read(4096)
+                    if not chunk:
+                        break
+                    jpeg_data += chunk
+                    if b'\xff\xd9' in chunk:
+                        break
+                if not jpeg_data:
+                    frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
+                else:
+                    arr = np.frombuffer(jpeg_data, dtype=np.uint8)
+                    frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                    if frame is None:
+                        frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
             else:
-                self.monitor.update_frame_stats(dropped=False)
-                
-                # Apply adaptive quality
-                if self.adaptive_quality and self.current_quality < 1.0:
-                    height, width = frame.shape[:2]
-                    new_height = int(height * self.current_quality)
-                    new_width = int(width * self.current_quality)
-                    frame = cv2.resize(frame, (new_width, new_height))
-                    frame = cv2.resize(frame, (width, height))  # Scale back up
-        
-        # Convert BGR to RGB
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        
-        # Create VideoFrame
-        av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
-        av_frame.pts = pts
-        av_frame.time_base = time_base
-        
-        return av_frame
-    
+                # Use OpenCV for legacy camera
+                if self.cap is None or not self.cap.isOpened():
+                    frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
+                else:
+                    ret, frame = self.cap.read()
+                    if not ret:
+                        frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
+            av_frame.pts = pts
+            av_frame.time_base = time_base
+            return av_frame
+        except Exception as e:
+            logging.error(f"Error reading frame from camera: {e}")
+            frame = np.zeros((self.camera_config['height'], self.camera_config['width'], 3), dtype=np.uint8)
+            av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
+            av_frame.pts = pts
+            av_frame.time_base = time_base
+            return av_frame
+
     def stop(self):
         """Clean up camera resources."""
-        if self.cap:
+        if hasattr(self, 'use_rpicam') and self.use_rpicam and hasattr(self, 'rpicam_proc') and self.rpicam_proc:
+            self.rpicam_proc.terminate()
+            self.rpicam_proc.wait()
+            logging.info("rpicam-hello process terminated")
+        if hasattr(self, 'cap') and self.cap:
             self.cap.release()
-            logging.info("Camera released")
+            logging.info("OpenCV camera released")
 
 class WebRTCServer:
     """Enhanced WebRTC server with configuration support."""
