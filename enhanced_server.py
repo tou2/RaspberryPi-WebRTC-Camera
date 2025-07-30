@@ -800,6 +800,8 @@ document.addEventListener('visibilitychange', () => {
                 }, status=429)
             
             params = await request.json()
+            logging.info(f"Received offer: type={params.get('type')}, sdp_length={len(params.get('sdp', ''))}")
+            
             offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
             
             # Create new peer connection
@@ -808,6 +810,7 @@ document.addEventListener('visibilitychange', () => {
                 RTCIceServer(urls=["stun:stun1.l.google.com:19302"])
             ])
             pc = RTCPeerConnection(configuration=config)
+            logging.info(f"Created RTCPeerConnection with config: {config}")
             
             self.peer_connections.add(pc)
             self.connection_count += 1
@@ -819,31 +822,49 @@ document.addEventListener('visibilitychange', () => {
                     self.peer_connections.discard(pc)
             
             # Add optimized video track
-            video_track = OptimizedCameraTrack(self.config)
-            pc.addTrack(video_track)
+            try:
+                video_track = OptimizedCameraTrack(self.config)
+                pc.addTrack(video_track)
+                logging.info("Added video track to peer connection")
+            except Exception as track_error:
+                logging.error(f"Failed to create/add video track: {track_error}")
+                raise
             
             # Set remote description and create answer
+            logging.info("Setting remote description...")
             await pc.setRemoteDescription(offer)
+            logging.info("Creating answer...")
             answer = await pc.createAnswer()
+            logging.info(f"Created answer: type={answer.type}, sdp_length={len(answer.sdp) if answer.sdp else 0}")
+            logging.info("Setting local description...")
             await pc.setLocalDescription(answer)
 
             # Ensure localDescription is set before returning
             if pc.localDescription is None:
+                logging.warning("pc.localDescription is None, waiting 100ms...")
                 import asyncio
                 await asyncio.sleep(0.1)
             if pc.localDescription is None:
-                logging.error("pc.localDescription is None after setLocalDescription. Cannot return answer.")
+                logging.error("pc.localDescription is still None after setLocalDescription. Cannot return answer.")
                 return web.json_response({"error": "Internal server error: no SDP answer generated"}, status=500)
 
             logging.info(f"New connection established. Active connections: {len(self.peer_connections)}")
+            logging.info(f"Returning answer: type={pc.localDescription.type}, sdp_length={len(pc.localDescription.sdp) if pc.localDescription.sdp else 0}")
 
-            return web.json_response({
+            response_data = {
                 "sdp": pc.localDescription.sdp,
                 "type": pc.localDescription.type
-            })
+            }
+            
+            # Validate response data before sending
+            if not response_data["sdp"] or not response_data["type"]:
+                logging.error(f"Invalid response data: sdp={bool(response_data['sdp'])}, type={response_data['type']}")
+                return web.json_response({"error": "Invalid SDP answer generated"}, status=500)
+            
+            return web.json_response(response_data)
             
         except Exception as e:
-            logging.error(f"Error handling offer: {e}")
+            logging.error(f"Error handling offer: {e}", exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
     
     async def _shutdown(self):
