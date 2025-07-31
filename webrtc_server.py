@@ -5,7 +5,6 @@ Optimized for minimal latency and efficient resource usage.
 """
 
 import asyncio
-import json
 import logging
 import subprocess
 import time
@@ -42,141 +41,7 @@ CONFIG = {
     ]
 }
 
-class CameraVideoTrack(VideoStreamTrack):
-    """
-    A video track that streams video from a Raspberry Pi Camera v3 using rpicam-vid.
-    This approach is more reliable than using OpenCV's VideoCapture for libcamera-based devices.
-    """
-    
-    def __init__(self):
-        super().__init__()
-        self.rpicam_proc = None
-        self._buffer = b''
-        self._setup_camera()
-        
-    def _setup_camera(self):
-        """Initialize camera using the rpicam-vid command-line tool."""
-        try:
-            rpicam_cmd = [
-                "rpicam-vid",
-                "--timeout", "0",  # Run forever
-                "--width", str(CONFIG['width']),
-                "--height", str(CONFIG['height']),
-                "--framerate", str(CONFIG['fps']),
-                "--codec", "mjpeg",
-                "--nopreview",
-                "--output", "-"  # Output to stdout
-            ]
-            
-            logger.info(f"Starting rpicam-vid process: {' '.join(rpicam_cmd)}")
-            self.rpicam_proc = subprocess.Popen(
-                rpicam_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-            
-            # Wait a moment and check if the process started correctly
-            time.sleep(2)
-            if self.rpicam_proc.poll() is not None:
-                stderr_output = self.rpicam_proc.stderr.read().decode('utf-8', errors='ignore')
-                raise RuntimeError(f"rpicam-vid failed to start. Error: {stderr_output}")
-
-            logger.info("rpicam-vid process started successfully.")
-
-        except FileNotFoundError:
-            logger.error("rpicam-vid command not found. Please ensure 'rpicam-apps' is installed ('sudo apt-get install rpicam-apps').")
-            raise
-        except Exception as e:
-            logger.error(f"Failed to initialize rpicam-vid: {e}")
-            raise
-
-    async def recv(self):
-        """Read the next frame from the rpicam-vid process."""
-        pts, time_base = await self.next_timestamp()
-        
-        loop = asyncio.get_event_loop()
-        
-        try:
-            frame_data = await loop.run_in_executor(None, self._read_mjpeg_frame)
-            
-            if frame_data:
-                arr = np.frombuffer(frame_data, dtype=np.uint8)
-                frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-                
-                if frame is not None:
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
-                    av_frame.pts = pts
-                    av_frame.time_base = time_base
-                    return av_frame
-        except Exception as e:
-            logger.error(f"Error processing frame from rpicam-vid: {e}")
-
-        # If anything fails, return a black frame
-        logger.warning("Returning black frame due to capture failure.")
-        black_frame = np.zeros((CONFIG["height"], CONFIG["width"], 3), dtype=np.uint8)
-        av_frame = VideoFrame.from_ndarray(black_frame, format="rgb24")
-        av_frame.pts = pts
-        av_frame.time_base = time_base
-        return av_frame
-
-    def _read_mjpeg_frame(self):
-        """
-        Reads a single MJPEG frame from the stdout of the rpicam-vid process.
-        This is a blocking function and should be run in an executor.
-        """
-        if not self.rpicam_proc or self.rpicam_proc.poll() is not None:
-            raise RuntimeError("rpicam-vid process is not running.")
-
-        stdout = self.rpicam_proc.stdout
-        
-        while True:
-            # Find start and end markers in the existing buffer
-            soi = self._buffer.find(b'\xff\xd8')
-            if soi != -1:
-                eoi = self._buffer.find(b'\xff\xd9', soi)
-                if eoi != -1:
-                    frame = self._buffer[soi : eoi + 2]
-                    self._buffer = self._buffer[eoi + 2:]
-                    return frame
-            
-            # If a full frame is not in the buffer, read more data
-            chunk = stdout.read(4096)
-            if not chunk:
-                raise EOFError("Camera stream ended.")
-            self._buffer += chunk
-    
-    def stop(self):
-        """Stop the rpicam-vid process."""
-        if self.rpicam_proc:
-            logger.info("Terminating rpicam-vid process...")
-            self.rpicam_proc.terminate()
-            try:
-                self.rpicam_proc.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                logger.warning("rpicam-vid did not terminate gracefully, killing.")
-                self.rpicam_proc.kill()
-            self.rpicam_proc = None
-            logger.info("rpicam-vid process stopped.")
-
-class WebRTCServer:
-    """WebRTC server managing peer connections and signaling."""
-    
-    def __init__(self):
-        self.peer_connections: Set[RTCPeerConnection] = set()
-        self.app = web.Application()
-        self.video_track = CameraVideoTrack()
-        self._setup_routes()
-        
-    def _setup_routes(self):
-        """Setup HTTP routes for signaling and serving static files."""
-        self.app.router.add_get("/", self.index)
-        self.app.router.add_get("/client.js", self.client_js)
-        self.app.router.add_post("/offer", self.offer)
-        
-    async def index(self, request):
-        """Serve the HTML client."""
-        html_content = """
+INDEX_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
@@ -285,12 +150,9 @@ class WebRTCServer:
     <script src="/client.js"></script>
 </body>
 </html>
-        """
-        return web.Response(text=html_content, content_type="text/html")
-    
-    async def client_js(self, request):
-        """Serve the JavaScript client."""
-        js_content = """
+"""
+
+CLIENT_JS = """
 let pc = null;
 
 const configuration = {
@@ -435,8 +297,147 @@ document.addEventListener('visibilitychange', () => {
         console.log('Page visible, checking connection');
     }
 });
+"""
+
+class CameraVideoTrack(VideoStreamTrack):
+    """
+    A video track that streams video from a Raspberry Pi Camera v3 using rpicam-vid.
+    This approach is more reliable than using OpenCV's VideoCapture for libcamera-based devices.
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.rpicam_proc = None
+        self._buffer = b''
+        self._setup_camera()
+        
+    def _setup_camera(self):
+        """Initialize camera using the rpicam-vid command-line tool."""
+        try:
+            rpicam_cmd = [
+                "rpicam-vid",
+                "--timeout", "0",  # Run forever
+                "--width", str(CONFIG['width']),
+                "--height", str(CONFIG['height']),
+                "--framerate", str(CONFIG['fps']),
+                "--codec", "mjpeg",
+                "--nopreview",
+                "--output", "-"  # Output to stdout
+            ]
+            
+            logger.info(f"Starting rpicam-vid process: {' '.join(rpicam_cmd)}")
+            self.rpicam_proc = subprocess.Popen(
+                rpicam_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            
+            # Wait a moment and check if the process started correctly
+            time.sleep(2)
+            if self.rpicam_proc.poll() is not None:
+                stderr_output = self.rpicam_proc.stderr.read().decode('utf-8', errors='ignore')
+                raise RuntimeError(f"rpicam-vid failed to start. Error: {stderr_output}")
+
+            logger.info("rpicam-vid process started successfully.")
+
+        except FileNotFoundError:
+            logger.error("rpicam-vid command not found. Please ensure 'rpicam-apps' is installed ('sudo apt-get install rpicam-apps').")
+            raise
+        except Exception as e:
+            logger.error(f"Failed to initialize rpicam-vid: {e}")
+            raise
+
+    async def recv(self):
+        """Read the next frame from the rpicam-vid process."""
+        pts, time_base = await self.next_timestamp()
+        
+        loop = asyncio.get_event_loop()
+        
+        try:
+            frame_data = await loop.run_in_executor(None, self._read_mjpeg_frame)
+            
+            if frame_data:
+                arr = np.frombuffer(frame_data, dtype=np.uint8)
+                frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                
+                if frame is not None:
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
+                    av_frame.pts = pts
+                    av_frame.time_base = time_base
+                    return av_frame
+        except Exception as e:
+            logger.error(f"Error processing frame from rpicam-vid: {e}")
+
+        # If anything fails, return a black frame
+        logger.warning("Returning black frame due to capture failure.")
+        black_frame = np.zeros((CONFIG["height"], CONFIG["width"], 3), dtype=np.uint8)
+        av_frame = VideoFrame.from_ndarray(black_frame, format="rgb24")
+        av_frame.pts = pts
+        av_frame.time_base = time_base
+        return av_frame
+
+    def _read_mjpeg_frame(self):
         """
-        return web.Response(text=js_content, content_type="application/javascript")
+        Reads a single MJPEG frame from the stdout of the rpicam-vid process.
+        This is a blocking function and should be run in an executor.
+        """
+        if not self.rpicam_proc or self.rpicam_proc.poll() is not None:
+            raise RuntimeError("rpicam-vid process is not running.")
+
+        stdout = self.rpicam_proc.stdout
+        
+        while True:
+            # Find start and end markers in the existing buffer
+            soi = self._buffer.find(b'\xff\xd8')
+            if soi != -1:
+                eoi = self._buffer.find(b'\xff\xd9', soi)
+                if eoi != -1:
+                    frame = self._buffer[soi : eoi + 2]
+                    self._buffer = self._buffer[eoi + 2:]
+                    return frame
+            
+            # If a full frame is not in the buffer, read more data
+            chunk = stdout.read(4096)
+            if not chunk:
+                raise EOFError("Camera stream ended.")
+            self._buffer += chunk
+    
+    def stop(self):
+        """Stop the rpicam-vid process."""
+        if self.rpicam_proc:
+            logger.info("Terminating rpicam-vid process...")
+            self.rpicam_proc.terminate()
+            try:
+                self.rpicam_proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                logger.warning("rpicam-vid did not terminate gracefully, killing.")
+                self.rpicam_proc.kill()
+            self.rpicam_proc = None
+            logger.info("rpicam-vid process stopped.")
+
+class WebRTCServer:
+    """WebRTC server managing peer connections and signaling."""
+    
+    def __init__(self):
+        self.peer_connections: Set[RTCPeerConnection] = set()
+        self.app = web.Application()
+        self.video_track = CameraVideoTrack()
+        self._setup_routes()
+        
+    def _setup_routes(self):
+        """Setup HTTP routes for signaling and serving static files."""
+        self.app.router.add_get("/", self.index)
+        self.app.router.add_get("/client.js", self.client_js)
+        self.app.router.add_post("/offer", self.offer)
+        
+    async def index(self, request):
+        """Serve the HTML client."""
+        return web.Response(text=INDEX_HTML, content_type="text/html")
+    
+    async def client_js(self, request):
+        """Serve the JavaScript client."""
+        return web.Response(text=CLIENT_JS, content_type="application/javascript")
     
     async def offer(self, request):
         """Handle WebRTC offer from client."""
