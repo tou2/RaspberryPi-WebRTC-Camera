@@ -407,23 +407,21 @@ document.addEventListener('visibilitychange', () => {
             video_track = CameraVideoTrack()
             pc.addTrack(video_track)
             
-            # Set remote description and create answer
+            # Set remote description
             logger.info("Setting remote description...")
             await pc.setRemoteDescription(offer)
+
+            # Proactively set transceiver direction to avoid aiortc bug
+            logger.info("Applying workaround for aiortc transceiver direction bug.")
+            for t in pc.getTransceivers():
+                if t.kind == "video":
+                    t.direction = "sendonly"
 
             logger.info("Creating answer...")
             answer = await pc.createAnswer()
 
             logger.info("Setting local description...")
-            try:
-                await pc.setLocalDescription(answer)
-            except ValueError:
-                logger.warning("Caught ValueError on setLocalDescription, applying workaround for aiortc bug.")
-                # Workaround for https://github.com/aiortc/aiortc/issues/363
-                for t in pc.getTransceivers():
-                    if t.kind == "video":
-                        t.direction = "sendonly"
-                await pc.setLocalDescription(answer)
+            await pc.setLocalDescription(answer)
 
             if pc.localDescription and pc.localDescription.sdp:
                 logger.info(f"Successfully generated answer SDP of length {len(pc.localDescription.sdp)}")
