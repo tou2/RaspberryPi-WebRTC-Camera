@@ -890,15 +890,14 @@ document.addEventListener('visibilitychange', () => {
             # Add optimized video track AFTER setting remote description
             try:
                 video_track = OptimizedCameraTrack(self.config)
-                // Add track with explicit direction and kind to avoid aiortc SDP direction bug
+                # Add track with explicit direction and kind to avoid aiortc SDP direction bug
                 transceiver = pc.addTransceiver(video_track, direction="sendonly")
                 logging.info(f"Added video track to peer connection with direction: {transceiver.direction}")
                 
-                // Force MID assignment before creating answer - this is critical for BUNDLE groups
+                # Force MID assignment before creating answer - this is critical for BUNDLE groups
                 transceiver._mid = "0"
                 logging.info(f"Assigned MID '0' to video transceiver")
-                    
-            } catch (Exception track_error) {
+            except Exception as track_error:
                 logging.error(f"Failed to create/add video track: {track_error}")
                 raise
             
