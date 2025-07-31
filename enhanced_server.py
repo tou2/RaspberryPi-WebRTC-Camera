@@ -926,7 +926,8 @@ document.addEventListener('visibilitychange', () => {
                             audio_mid = line.split(':', 1)[1].strip()
                             break
                     if audio_mid is None:
-                        audio_mid = '0'  # fallback
+                        # Fallback to 'audio' to avoid conflict with video MID
+                        audio_mid = 'audio'
                     # Insert a disabled audio section at the top of the answer SDP
                     audio_section = [
                         'm=audio 0 UDP/TLS/RTP/SAVPF 0',
