@@ -766,8 +766,11 @@ async function start() {
             };
         };
         
-        // Create offer
-        const offer = await pc.createOffer();
+        // Create offer for video only
+        const offer = await pc.createOffer({
+            offerToReceiveVideo: true,
+            offerToReceiveAudio: false
+        });
         await pc.setLocalDescription(offer);
         
         // Send offer to server
@@ -851,28 +854,21 @@ document.addEventListener('visibilitychange', () => {
         return web.json_response(stats)
     
     async def offer(self, request):
-        """Handle WebRTC offer with connection limiting."""
+        """Handle WebRTC offer with connection limiting and simplified negotiation."""
         try:
             # Check connection limit
             if len(self.peer_connections) >= self.network_config['max_connections']:
-                return web.json_response({
-                    "error": "Maximum connections reached"
-                }, status=429)
+                logging.info(f"Rejecting new connection, limit of {self.network_config['max_connections']} reached.")
+                return web.json_response({"error": "Maximum connections reached"}, status=429)
 
             params = await request.json()
-            logging.info(f"Received offer: type={params.get('type')}, sdp_length={len(params.get('sdp', ''))}")
-
             offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
 
-            # Create new peer connection
+            # Create new peer connection from config
             config = RTCConfiguration(
-                iceServers=[
-                    RTCIceServer(urls=["stun:stun.l.google.com:19302"]),
-                    RTCIceServer(urls=["stun:stun1.l.google.com:19302"])
-                ]
+                iceServers=[RTCIceServer(**{"urls": "stun:stun.l.google.com:19302"})]
             )
             pc = RTCPeerConnection(configuration=config)
-            logging.info(f"Created RTCPeerConnection with config: {config}")
 
             self.peer_connections.add(pc)
             self.connection_count += 1
@@ -880,196 +876,40 @@ document.addEventListener('visibilitychange', () => {
             @pc.on("connectionstatechange")
             async def on_connectionstatechange():
                 logging.info(f"Connection state: {pc.connectionState}")
-                if pc.connectionState in ["closed", "failed"]:
+                if pc.connectionState in ["closed", "failed", "disconnected"]:
                     self.peer_connections.discard(pc)
+            
+            # Add the rpicam-based video track
+            video_track = OptimizedCameraTrack(self.config)
+            pc.addTrack(video_track)
             
             # Set remote description and create answer
             logging.info("Setting remote description...")
             await pc.setRemoteDescription(offer)
             
-            # Add optimized video track AFTER setting remote description
-            try:
-                video_track = OptimizedCameraTrack(self.config)
-                # Add track with explicit direction and kind to avoid aiortc SDP direction bug
-                transceiver = pc.addTransceiver(video_track, direction="sendonly")
-                logging.info(f"Added video track to peer connection with direction: {transceiver.direction}")
-                # Force MID assignment before creating answer - this is critical for BUNDLE groups
-                transceiver._mid = "0"
-                logging.info(f"Assigned MID '0' to video transceiver")
-            except Exception as track_error:
-                logging.error(f"Failed to create/add video track: {track_error}")
-                raise
-            
             logging.info("Creating answer...")
             answer = await pc.createAnswer()
-            logging.info(f"Created answer: type={answer.type}, sdp_length={len(answer.sdp) if answer.sdp else 0}")
-            
-            # Debug and robustly fix SDP content before setting local description
-            if answer.sdp:
-                sdp_lines = answer.sdp.split('\n')
-                logging.debug("Answer SDP preview:")
-                for i, line in enumerate(sdp_lines[:10]):
-                    logging.debug(f"  {i}: {line}")
-                
-                # --- NEW: Check if offer contains audio, and patch answer accordingly ---
-                offer_sdp_lines = offer.sdp.split('\n')
-                offer_has_audio = any(line.startswith('m=audio') for line in offer_sdp_lines)
-                answer_has_audio = any(line.startswith('m=audio') for line in sdp_lines)
-                if offer_has_audio and not answer_has_audio:
-                    # Remove all audio features: Only process video SDP
-                    sdp_lines = [line for line in sdp_lines if not line.startswith('m=audio')]
-                    sdp_lines = [line for line in sdp_lines if not (line.startswith('a=mid:') and 'audio' in line)]
-                    offer_video_mid = None
-                    in_video = False
-                    for line in offer_sdp_lines:
-                        if line.startswith('m=video'):
-                            in_video = True
-                        elif in_video and line.startswith('a=mid:'):
-                            offer_video_mid = line.split(':', 1)[1].strip()
-                            in_video = False
-                    mids = []
-                    if offer_video_mid:
-                        mids.append(offer_video_mid)
-                    if not mids:
-                        mids = [line.split(':', 1)[1].strip() for line in sdp_lines if line.startswith('a=mid:')]
-                    ice_ufrag = None
-                    ice_pwd = None
-                    for line in sdp_lines:
-                        if line.startswith('a=ice-ufrag:'):
-                            ice_ufrag = line.split(':', 1)[1].strip()
-                        if line.startswith('a=ice-pwd:'):
-                            ice_pwd = line.split(':', 1)[1].strip()
-                    if not ice_ufrag:
-                        ice_ufrag = 'dummyufrag'
-                    if not ice_pwd:
-                        ice_pwd = 'dummypwd1234567890'
-                    video_section_found = False
-                    for idx, line in enumerate(sdp_lines):
-                        if line.startswith('m=video'):
-                            video_section_found = True
-                            mid_present = False
-                            ice_present = False
-                            setup_present = False
-                            for offset in range(1, 10):
-                                if idx + offset < len(sdp_lines):
-                                    if sdp_lines[idx + offset].startswith('a=mid:'):
-                                        mid_present = True
-                                    if sdp_lines[idx + offset].startswith('a=ice-ufrag:'):
-                                        ice_present = True
-                                    if sdp_lines[idx + offset].startswith('a=setup:'):
-                                        setup_present = True
-                            insert_pos = idx + 1
-                            if not mid_present:
-                                sdp_lines.insert(insert_pos, 'a=mid:0')
-                                logging.info("Inserted missing a=mid:0 after m=video")
-                                insert_pos += 1
-                            if not ice_present:
-                                sdp_lines.insert(insert_pos, f'a=ice-ufrag:{ice_ufrag}')
-                                sdp_lines.insert(insert_pos + 1, f'a=ice-pwd:{ice_pwd}')
-                                logging.info("Inserted missing ICE credentials after m=video")
-                                insert_pos += 2
-                            if not setup_present:
-                                sdp_lines.insert(insert_pos, 'a=setup:actpass')
-                                logging.info("Inserted missing DTLS setup line after m=video")
-                            rtcp_mux_present = False
-                            for offset in range(1, 10):
-                                if idx + offset < len(sdp_lines):
-                                    if sdp_lines[idx + offset].startswith('a=rtcp-mux'):
-                                        rtcp_mux_present = True
-                            if not rtcp_mux_present:
-                                sdp_lines.insert(insert_pos, 'a=rtcp-mux')
-                                logging.info("Inserted missing a=rtcp-mux after m=video")
-                                insert_pos += 1
-                            break
-                    if not video_section_found:
-                        sdp_lines.append('m=video 9 UDP/TLS/RTP/SAVPF 96')
-                        sdp_lines.append('c=IN IP4 0.0.0.0')
-                        sdp_lines.append('a=rtpmap:96 VP8/90000')
-                        sdp_lines.append('a=mid:0')
-                        sdp_lines.append(f'a=ice-ufrag:{ice_ufrag}')
-                        sdp_lines.append(f'a=ice-pwd:{ice_pwd}')
-                        sdp_lines.append('a=setup:actpass')
-                        sdp_lines.append('a=rtcp-mux')
-                        logging.info("Added missing m=video section with a=mid:0, ICE credentials, DTLS setup, and a=rtcp-mux")
-                    
-                    # --- Re-collect MIDs after all patching is complete ---
-                    mids = [line.split(':', 1)[1].strip() for line in sdp_lines if line.startswith('a=mid:')]
-                    
-                    # Patch BUNDLE line and DTLS setup
-                    fixed_sdp_lines = []
-                    for line in sdp_lines:
-                        if line.startswith('a=group:BUNDLE'):
-                            line = 'a=group:BUNDLE ' + (' '.join(mids) if mids else '0')
-                            logging.info(f"Fixed BUNDLE line: {line}")
-                        if line.startswith('a=setup:actpass'):
-                            line = 'a=setup:passive'
-                            logging.info("Replaced DTLS setup attribute with 'passive' for answer")
-                        fixed_sdp_lines.append(line)
-                    
-                    # Update the answer with fixed SDP
-                    answer = RTCSessionDescription(sdp='\n'.join(fixed_sdp_lines), type=answer.type)
-                    logging.info("Applied robust SDP fixes for video-only, BUNDLE/MID, ICE credentials, and DTLS setup issues")
-            
-            # Fix transceiver directions before setting local description
-            for transceiver in pc.getTransceivers():
-                if transceiver.sender.track and hasattr(transceiver.sender.track, '__class__'):
-                    if 'CameraTrack' in transceiver.sender.track.__class__.__name__:
-                        # Set both direction attributes to avoid aiortc SDP direction bug
-                        transceiver._direction = "sendonly"
-                        transceiver._offerDirection = "sendonly"
-                        transceiver._currentDirection = "sendonly"
-                        logging.info(f"Fixed transceiver directions: direction={transceiver._direction}, offerDirection={getattr(transceiver, '_offerDirection', 'None')}")
             
             logging.info("Setting local description...")
-            try:
-                await pc.setLocalDescription(answer)
-            except ValueError as ve:
-                if "None is not in list" in str(ve):
-                    logging.error("Encountered aiortc SDP direction bug, attempting workaround...")
-                    # Patch the problematic method temporarily
-                    from aiortc import rtcpeerconnection as rtc_module
-                    original_and_direction = rtc_module.and_direction
+            await pc.setLocalDescription(answer)
 
-                    def patched_and_direction(a, b):
-                        if a is None:
-                            a = "sendonly"
-                        if b is None:
-                            b = "sendonly"
-                        return original_and_direction(a, b)
-
-                    rtc_module.and_direction = patched_and_direction
-                    try:
-                        await pc.setLocalDescription(answer)
-                        logging.info("Successfully set local description with workaround")
-                    finally:
-                        rtc_module.and_direction = original_and_direction
-                else:
-                    raise
             # Ensure localDescription is set before returning
-            if pc.localDescription is None:
-                logging.warning("pc.localDescription is None, waiting 100ms...")
-                await asyncio.sleep(0.1)
-            if pc.localDescription is None:
-                logging.error("pc.localDescription is still None after setLocalDescription. Cannot return answer.")
-                return web.json_response({"error": "Internal server error: no SDP answer generated"}, status=500)
+            if not (pc.localDescription and pc.localDescription.sdp):
+                logging.error("Failed to generate valid local description.")
+                return web.json_response({"error": "Server failed to generate SDP answer"}, status=500)
 
             logging.info(f"New connection established. Active connections: {len(self.peer_connections)}")
-            logging.info(f"Returning answer: type={pc.localDescription.type}, sdp_length={len(pc.localDescription.sdp) if pc.localDescription.sdp else 0}")
-
-            response_data = {
+            return web.json_response({
                 "sdp": pc.localDescription.sdp,
                 "type": pc.localDescription.type
-            }
-
-            # Validate response data before sending
-            if not response_data["sdp"] or not response_data["type"]:
-                logging.error(f"Invalid response data: sdp={bool(response_data['sdp'])}, type={response_data['type']}")
-                return web.json_response({"error": "Invalid SDP answer generated"}, status=500)
-
-            return web.json_response(response_data)
+            })
 
         except Exception as e:
             logging.error(f"Error handling offer: {e}", exc_info=True)
+            # Ensure peer connection is closed on error
+            if 'pc' in locals() and pc in self.peer_connections:
+                self.peer_connections.discard(pc)
+                await pc.close()
             return web.json_response({"error": str(e)}, status=500)
     
     async def _shutdown(self):
