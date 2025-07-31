@@ -403,9 +403,10 @@ document.addEventListener('visibilitychange', () => {
             async def on_iceconnectionstatechange():
                 logger.info(f"ICE connection state: {pc.iceConnectionState}")
             
-            # Add video track using addTransceiver for more control over direction
-            logger.info("Adding video transceiver with direction 'sendonly'.")
+            # Add video track and explicitly reject audio
+            logger.info("Adding video transceiver and rejecting audio.")
             pc.addTransceiver(CameraVideoTrack(), direction="sendonly")
+            pc.addTransceiver("audio", direction="inactive")
             
             # Set remote description
             logger.info("Setting remote description...")
