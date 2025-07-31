@@ -68,10 +68,8 @@ class CameraVideoTrack(VideoStreamTrack):
             self.cap.set(cv2.CAP_PROP_FPS, CONFIG["fps"])
             self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimal buffer for low latency
             
-            # Additional optimizations for Pi camera
-            if hasattr(cv2, 'CAP_PROP_FOURCC'):
-                # Use MJPG for better performance on Pi
-                self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
+            # The FOURCC setting can be problematic with libcamera, so it's removed.
+            # The driver will select a default compatible format.
 
             # Allow camera to warm up
             logger.info("Allowing camera to warm up for 2 seconds...")
