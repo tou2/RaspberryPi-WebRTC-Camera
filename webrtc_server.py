@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import subprocess
 import threading
 import time
 from typing import Dict, Set
@@ -45,83 +46,120 @@ CONFIG = {
 
 class CameraVideoTrack(VideoStreamTrack):
     """
-    Custom video track that captures from camera with optimizations for low latency.
+    A video track that streams video from a Raspberry Pi Camera v3 using rpicam-vid.
+    This approach is more reliable than using OpenCV's VideoCapture for libcamera-based devices.
     """
     
     def __init__(self):
         super().__init__()
-        self.cap = None
+        self.rpicam_proc = None
+        self._buffer = b''
         self._setup_camera()
-        self.frame_count = 0
-        self.last_frame_time = time.time()
         
     def _setup_camera(self):
-        """Initialize camera with optimal settings for low latency."""
+        """Initialize camera using the rpicam-vid command-line tool."""
         try:
-            # Explicitly use the V4L2 backend for libcamera compatibility
-            logger.info("Using V4L2 backend for camera capture.")
-            self.cap = cv2.VideoCapture(CONFIG["camera_index"], cv2.CAP_V4L2)
+            rpicam_cmd = [
+                "rpicam-vid",
+                "--timeout", "0",  # Run forever
+                "--width", str(CONFIG['width']),
+                "--height", str(CONFIG['height']),
+                "--framerate", str(CONFIG['fps']),
+                "--codec", "mjpeg",
+                "--nopreview",
+                "--output", "-"  # Output to stdout
+            ]
             
-            # Set camera properties for low latency
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, CONFIG["width"])
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CONFIG["height"])
-            self.cap.set(cv2.CAP_PROP_FPS, CONFIG["fps"])
-            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimal buffer for low latency
+            logger.info(f"Starting rpicam-vid process: {' '.join(rpicam_cmd)}")
+            self.rpicam_proc = subprocess.Popen(
+                rpicam_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
             
-            # The FOURCC setting can be problematic with libcamera, so it's removed.
-            # The driver will select a default compatible format.
-
-            # Allow camera to warm up
-            logger.info("Allowing camera to warm up for 2 seconds...")
+            # Wait a moment and check if the process started correctly
             time.sleep(2)
+            if self.rpicam_proc.poll() is not None:
+                stderr_output = self.rpicam_proc.stderr.read().decode('utf-8', errors='ignore')
+                raise RuntimeError(f"rpicam-vid failed to start. Error: {stderr_output}")
 
-            if not self.cap.isOpened():
-                raise ConnectionError("Camera could not be opened.")
-            
-            logger.info(f"Camera initialized: {CONFIG['width']}x{CONFIG['height']} @ {CONFIG['fps']}fps")
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize camera: {e}")
+            logger.info("rpicam-vid process started successfully.")
+
+        except FileNotFoundError:
+            logger.error("rpicam-vid command not found. Please ensure 'rpicam-apps' is installed ('sudo apt-get install rpicam-apps').")
             raise
-    
+        except Exception as e:
+            logger.error(f"Failed to initialize rpicam-vid: {e}")
+            raise
+
     async def recv(self):
-        """Receive the next video frame."""
+        """Read the next frame from the rpicam-vid process."""
         pts, time_base = await self.next_timestamp()
         
-        if self.cap is None or not self.cap.isOpened():
-            logger.error("Camera not available")
-            # Return a black frame as fallback
-            frame = np.zeros((CONFIG["height"], CONFIG["width"], 3), dtype=np.uint8)
-        else:
-            ret, frame = self.cap.read()
-            if not ret:
-                logger.warning("Failed to capture frame")
-                frame = np.zeros((CONFIG["height"], CONFIG["width"], 3), dtype=np.uint8)
+        loop = asyncio.get_event_loop()
         
-        # Convert BGR to RGB
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        
-        # Create VideoFrame
-        av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
+        try:
+            frame_data = await loop.run_in_executor(None, self._read_mjpeg_frame)
+            
+            if frame_data:
+                arr = np.frombuffer(frame_data, dtype=np.uint8)
+                frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                
+                if frame is not None:
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
+                    av_frame.pts = pts
+                    av_frame.time_base = time_base
+                    return av_frame
+        except Exception as e:
+            logger.error(f"Error processing frame from rpicam-vid: {e}")
+
+        # If anything fails, return a black frame
+        logger.warning("Returning black frame due to capture failure.")
+        black_frame = np.zeros((CONFIG["height"], CONFIG["width"], 3), dtype=np.uint8)
+        av_frame = VideoFrame.from_ndarray(black_frame, format="rgb24")
         av_frame.pts = pts
         av_frame.time_base = time_base
-        
-        # Log FPS periodically
-        self.frame_count += 1
-        current_time = time.time()
-        if current_time - self.last_frame_time >= 5.0:  # Every 5 seconds
-            fps = self.frame_count / (current_time - self.last_frame_time)
-            logger.info(f"Streaming at {fps:.1f} FPS")
-            self.frame_count = 0
-            self.last_frame_time = current_time
-        
         return av_frame
+
+    def _read_mjpeg_frame(self):
+        """
+        Reads a single MJPEG frame from the stdout of the rpicam-vid process.
+        This is a blocking function and should be run in an executor.
+        """
+        if not self.rpicam_proc or self.rpicam_proc.poll() is not None:
+            raise RuntimeError("rpicam-vid process is not running.")
+
+        stdout = self.rpicam_proc.stdout
+        
+        while True:
+            # Find start and end markers in the existing buffer
+            soi = self._buffer.find(b'\xff\xd8')
+            if soi != -1:
+                eoi = self._buffer.find(b'\xff\xd9', soi)
+                if eoi != -1:
+                    frame = self._buffer[soi : eoi + 2]
+                    self._buffer = self._buffer[eoi + 2:]
+                    return frame
+            
+            # If a full frame is not in the buffer, read more data
+            chunk = stdout.read(4096)
+            if not chunk:
+                raise EOFError("Camera stream ended.")
+            self._buffer += chunk
     
     def stop(self):
-        """Clean up camera resources."""
-        if self.cap:
-            self.cap.release()
-            logger.info("Camera released")
+        """Stop the rpicam-vid process."""
+        if self.rpicam_proc:
+            logger.info("Terminating rpicam-vid process...")
+            self.rpicam_proc.terminate()
+            try:
+                self.rpicam_proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                logger.warning("rpicam-vid did not terminate gracefully, killing.")
+                self.rpicam_proc.kill()
+            self.rpicam_proc = None
+            logger.info("rpicam-vid process stopped.")
 
 class WebRTCServer:
     """WebRTC server managing peer connections and signaling."""
