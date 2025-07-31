@@ -420,6 +420,18 @@ document.addEventListener('visibilitychange', () => {
             logger.info("Creating answer...")
             answer = await pc.createAnswer()
 
+            # Manually patch SDP for robustness
+            logger.info("Manually patching SDP answer.")
+            patched_sdp = ""
+            for line in answer.sdp.splitlines():
+                if line.startswith("a=mid:video"):
+                    patched_sdp += line + "\r\n"
+                    patched_sdp += "a=setup:passive\r\n"
+                else:
+                    patched_sdp += line + "\r\n"
+            
+            answer = RTCSessionDescription(sdp=patched_sdp, type=answer.type)
+
             logger.info("Setting local description...")
             await pc.setLocalDescription(answer)
 
