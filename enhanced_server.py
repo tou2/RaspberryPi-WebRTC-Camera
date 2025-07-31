@@ -1083,15 +1083,13 @@ document.addEventListener('visibilitychange', () => {
         logging.info(f"Enhanced WebRTC server started on http://{self.network_config['host']}:{self.network_config['port']}")
         logging.info(f"Maximum concurrent connections: {self.network_config['max_connections']}")
         
-        try {
-            while true {
+        try:
+            while True:
                 await asyncio.sleep(1)
-            }
-        } catch (KeyboardInterrupt) {
+        except KeyboardInterrupt:
             logging.info("Server stopped by user")
-        } finally {
+        finally:
             await runner.cleanup()
-        }
     
 # End of WebRTCServer class
 
