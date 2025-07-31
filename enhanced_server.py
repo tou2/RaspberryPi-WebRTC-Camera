@@ -858,12 +858,12 @@ document.addEventListener('visibilitychange', () => {
                 return web.json_response({
                     "error": "Maximum connections reached"
                 }, status=429)
-            
+
             params = await request.json()
             logging.info(f"Received offer: type={params.get('type')}, sdp_length={len(params.get('sdp', ''))}")
-            
+
             offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
-            
+
             # Create new peer connection
             config = RTCConfiguration(
                 iceServers=[
@@ -873,10 +873,10 @@ document.addEventListener('visibilitychange', () => {
             )
             pc = RTCPeerConnection(configuration=config)
             logging.info(f"Created RTCPeerConnection with config: {config}")
-            
+
             self.peer_connections.add(pc)
             self.connection_count += 1
-            
+
             @pc.on("connectionstatechange")
             async def on_connectionstatechange():
                 logging.info(f"Connection state: {pc.connectionState}")
@@ -905,75 +905,62 @@ document.addEventListener('visibilitychange', () => {
             answer = await pc.createAnswer()
             logging.info(f"Created answer: type={answer.type}, sdp_length={len(answer.sdp) if answer.sdp else 0}")
             
-            // Debug and robustly fix SDP content before setting local description
-            if (answer.sdp) {
+            # Debug and robustly fix SDP content before setting local description
+            if answer.sdp:
                 sdp_lines = answer.sdp.split('\n')
                 logging.debug("Answer SDP preview:")
-                for (i, line) in sdp_lines[:10].entries() {
+                for i, line in enumerate(sdp_lines[:10]):
                     logging.debug(f"  {i}: {line}")
-                }
-
-                // Find ICE credentials from SDP if present
+                
+                # Find ICE credentials from SDP if present
                 ice_ufrag = None
                 ice_pwd = None
-                for line in sdp_lines {
-                    if (line.startswith('a=ice-ufrag:')) {
+                for line in sdp_lines:
+                    if line.startswith('a=ice-ufrag:'):
                         ice_ufrag = line.split(':', 1)[1].strip()
-                    }
-                    if (line.startswith('a=ice-pwd:')) {
+                    if line.startswith('a=ice-pwd:'):
                         ice_pwd = line.split(':', 1)[1].strip()
-                    }
-                }
-                // If not present, generate dummy values
-                if (!ice_ufrag) {
+                # If not present, generate dummy values
+                if not ice_ufrag:
                     ice_ufrag = 'dummyufrag'
-                }
-                if (!ice_pwd) {
+                if not ice_pwd:
                     ice_pwd = 'dummypwd1234567890'
-                }
-
-                // Find all mids in media sections
+                
+                # Find all mids in media sections
                 mids = [line.split(':', 1)[1].strip() for line in sdp_lines if line.startswith('a=mid:')]
                 video_section_found = False
-                for (idx, line) in sdp_lines.entries() {
-                    if (line.startswith('m=video')) {
+                for idx, line in enumerate(sdp_lines):
+                    if line.startswith('m=video'):
                         video_section_found = True
-                        // Check if a=mid:0, ICE, and DTLS setup are present in the next few lines
-                        mid_present = false
-                        ice_present = false
-                        setup_present = false
-                        for (offset in 1..10) {
-                            if (idx + offset < len(sdp_lines)) {
-                                if (sdp_lines[idx + offset].startswith('a=mid:0')) {
-                                    mid_present = true
-                                }
-                                if (sdp_lines[idx + offset].startswith('a=ice-ufrag:')) {
-                                    ice_present = true
-                                }
-                                if (sdp_lines[idx + offset].startswith('a=setup:')) {
-                                    setup_present = true
-                                }
+                        # Check if a=mid:0, ICE, and DTLS setup are present in the next few lines
+                        mid_present = False
+                        ice_present = False
+                        setup_present = False
+                        for offset in range(1, 10):
+                            if idx + offset < len(sdp_lines):
+                                if sdp_lines[idx + offset].startswith('a=mid:0'):
+                                    mid_present = True
+                                if sdp_lines[idx + offset].startswith('a=ice-ufrag:'):
+                                    ice_present = True
+                                if sdp_lines[idx + offset].startswith('a=setup:'):
+                                    setup_present = True
                         insert_pos = idx + 1
-                        if (!mid_present) {
+                        if not mid_present:
                             sdp_lines.insert(insert_pos, 'a=mid:0')
                             mids = ['0']
                             logging.info("Inserted missing a=mid:0 after m=video")
                             insert_pos += 1
-                        }
-                        if (!ice_present) {
+                        if not ice_present:
                             sdp_lines.insert(insert_pos, f'a=ice-ufrag:{ice_ufrag}')
                             sdp_lines.insert(insert_pos + 1, f'a=ice-pwd:{ice_pwd}')
                             logging.info("Inserted missing ICE credentials after m=video")
                             insert_pos += 2
-                        }
-                        if (!setup_present) {
+                        if not setup_present:
                             sdp_lines.insert(insert_pos, 'a=setup:actpass')
                             logging.info("Inserted missing DTLS setup line after m=video")
-                        }
                         break
-                }
-                // If no video section, add one at the end
-                if (!video_section_found) {
+                # If no video section, add one at the end
+                if not video_section_found:
                     sdp_lines.append('m=video 9 UDP/TLS/RTP/SAVPF 96')
                     sdp_lines.append('c=IN IP4 0.0.0.0')
                     sdp_lines.append('a=rtpmap:96 VP8/90000')
@@ -983,72 +970,64 @@ document.addEventListener('visibilitychange', () => {
                     sdp_lines.append('a=setup:actpass')
                     mids = ['0']
                     logging.info("Added missing m=video section with a=mid:0, ICE credentials, and DTLS setup")
-                // Patch BUNDLE line and DTLS setup
+                # Patch BUNDLE line and DTLS setup
                 fixed_sdp_lines = []
-                for line in sdp_lines {
-                    if (line.startswith('a=group:BUNDLE')) {
-                        // Replace with correct mids
+                for line in sdp_lines:
+                    if line.startswith('a=group:BUNDLE'):
+                        # Replace with correct mids
                         line = 'a=group:BUNDLE ' + (' '.join(mids) if mids else '0')
                         logging.info(f"Fixed BUNDLE line: {line}")
-                    }
-                    if (line.startswith('a=setup:actpass')) {
+                    if line.startswith('a=setup:actpass'):
                         line = 'a=setup:passive'
                         logging.info("Replaced DTLS setup attribute with 'passive' for answer")
-                    }
                     fixed_sdp_lines.append(line)
-                }
-                // Update the answer with fixed SDP
+                # Update the answer with fixed SDP
                 answer = RTCSessionDescription(sdp='\n'.join(fixed_sdp_lines), type=answer.type)
                 logging.info("Applied robust SDP fixes for BUNDLE/MID, media section, ICE credentials, and DTLS setup issues")
             
-            // Fix transceiver directions before setting local description
+            # Fix transceiver directions before setting local description
             for transceiver in pc.getTransceivers():
                 if transceiver.sender.track and hasattr(transceiver.sender.track, '__class__'):
                     if 'CameraTrack' in transceiver.sender.track.__class__.__name__:
-                        // Set both direction attributes to avoid aiortc SDP direction bug
+                        # Set both direction attributes to avoid aiortc SDP direction bug
                         transceiver._direction = "sendonly"
                         transceiver._offerDirection = "sendonly"
                         transceiver._currentDirection = "sendonly"
                         logging.info(f"Fixed transceiver directions: direction={transceiver._direction}, offerDirection={getattr(transceiver, '_offerDirection', 'None')}")
             
             logging.info("Setting local description...")
-            try {
+            try:
                 await pc.setLocalDescription(answer)
-            } catch (ValueError ve) {
-                if ("None is not in list" in str(ve)) {
+            except ValueError as ve:
+                if "None is not in list" in str(ve):
                     logging.error("Encountered aiortc SDP direction bug, attempting workaround...")
-                    // Patch the problematic method temporarily
+                    # Patch the problematic method temporarily
                     import aiortc.rtcpeerconnection as rtc_module
                     original_and_direction = rtc_module.and_direction
-                    
+
                     def patched_and_direction(a, b):
                         if a is None:
                             a = "sendonly"
                         if b is None:
                             b = "sendonly"
                         return original_and_direction(a, b)
-                    
+
                     rtc_module.and_direction = patched_and_direction
-                    try {
+                    try:
                         await pc.setLocalDescription(answer)
                         logging.info("Successfully set local description with workaround")
-                    } finally {
+                    finally:
                         rtc_module.and_direction = original_and_direction
-                    }
-                } else {
+                else:
                     raise
-                }
-
-            // Ensure localDescription is set before returning
-            if (pc.localDescription is None) {
+            
+            # Ensure localDescription is set before returning
+            if pc.localDescription is None:
                 logging.warning("pc.localDescription is None, waiting 100ms...")
-                import asyncio
                 await asyncio.sleep(0.1)
-            }
-            if (pc.localDescription is None) {
+            if pc.localDescription is None:
                 logging.error("pc.localDescription is still None after setLocalDescription. Cannot return answer.")
                 return web.json_response({"error": "Internal server error: no SDP answer generated"}, status=500)
-            }
 
             logging.info(f"New connection established. Active connections: {len(self.peer_connections)}")
             logging.info(f"Returning answer: type={pc.localDescription.type}, sdp_length={len(pc.localDescription.sdp) if pc.localDescription.sdp else 0}")
@@ -1057,28 +1036,24 @@ document.addEventListener('visibilitychange', () => {
                 "sdp": pc.localDescription.sdp,
                 "type": pc.localDescription.type
             }
-            
-            // Validate response data before sending
-            if (!response_data["sdp"] || !response_data["type"]) {
+
+            # Validate response data before sending
+            if not response_data["sdp"] or not response_data["type"]:
                 logging.error(f"Invalid response data: sdp={bool(response_data['sdp'])}, type={response_data['type']}")
                 return web.json_response({"error": "Invalid SDP answer generated"}, status=500)
-            }
-            
+
             return web.json_response(response_data)
-            
-        } catch (Exception e) {
+
+        except Exception as e:
             logging.error(f"Error handling offer: {e}", exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
-    }
-    
+
     async def _shutdown(self):
         """Graceful shutdown."""
         logging.info("Shutting down server...")
-        
-        // Close all peer connections
+        # Close all peer connections
         for pc in self.peer_connections.copy():
             await pc.close()
-        
         sys.exit(0)
     
     async def start_server(self):
@@ -1099,9 +1074,8 @@ document.addEventListener('visibilitychange', () => {
         logging.info(f"Maximum concurrent connections: {self.network_config['max_connections']}")
         
         try {
-            while (true) {
+            while True:
                 await asyncio.sleep(1)
-            }
         } catch (KeyboardInterrupt) {
             logging.info("Server stopped by user")
         } finally {
