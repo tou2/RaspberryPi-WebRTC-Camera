@@ -952,7 +952,7 @@ document.addEventListener('visibilitychange', () => {
                             setup_present = False
                             for offset in range(1, 10):
                                 if idx + offset < len(sdp_lines):
-                                    if sdp_lines[idx + offset].startswith('a=mid:0'):
+                                    if sdp_lines[idx + offset].startswith('a=mid:'):
                                         mid_present = True
                                     if sdp_lines[idx + offset].startswith('a=ice-ufrag:'):
                                         ice_present = True
@@ -961,7 +961,6 @@ document.addEventListener('visibilitychange', () => {
                             insert_pos = idx + 1
                             if not mid_present:
                                 sdp_lines.insert(insert_pos, 'a=mid:0')
-                                mids = ['0']
                                 logging.info("Inserted missing a=mid:0 after m=video")
                                 insert_pos += 1
                             if not ice_present:
@@ -991,128 +990,13 @@ document.addEventListener('visibilitychange', () => {
                         sdp_lines.append(f'a=ice-pwd:{ice_pwd}')
                         sdp_lines.append('a=setup:actpass')
                         sdp_lines.append('a=rtcp-mux')
-                        mids = ['0']
                         logging.info("Added missing m=video section with a=mid:0, ICE credentials, DTLS setup, and a=rtcp-mux")
+                    
+                    # --- Re-collect MIDs after all patching is complete ---
+                    mids = [line.split(':', 1)[1].strip() for line in sdp_lines if line.startswith('a=mid:')]
+                    
+                    # Patch BUNDLE line and DTLS setup
                     fixed_sdp_lines = []
                     for line in sdp_lines:
                         if line.startswith('a=group:BUNDLE'):
-                            line = 'a=group:BUNDLE ' + (' '.join(mids) if mids else '0')
-                            logging.info(f"Fixed BUNDLE line: {line}")
-                        if line.startswith('a=setup:actpass'):
-                            line = 'a=setup:passive'
-                            logging.info("Replaced DTLS setup attribute with 'passive' for answer")
-                        fixed_sdp_lines.append(line)
-                    answer = RTCSessionDescription(sdp='\n'.join(fixed_sdp_lines), type=answer.type)
-                    logging.info("Applied robust SDP fixes for video-only, BUNDLE/MID, ICE credentials, and DTLS setup issues")
-            
-            # Fix transceiver directions before setting local description
-            for transceiver in pc.getTransceivers():
-                if transceiver.sender.track and hasattr(transceiver.sender.track, '__class__'):
-                    if 'CameraTrack' in transceiver.sender.track.__class__.__name__:
-                        # Set both direction attributes to avoid aiortc SDP direction bug
-                        transceiver._direction = "sendonly"
-                        transceiver._offerDirection = "sendonly"
-                        transceiver._currentDirection = "sendonly"
-                        logging.info(f"Fixed transceiver directions: direction={transceiver._direction}, offerDirection={getattr(transceiver, '_offerDirection', 'None')}")
-            
-            logging.info("Setting local description...")
-            try:
-                await pc.setLocalDescription(answer)
-            except ValueError as ve:
-                if "None is not in list" in str(ve):
-                    logging.error("Encountered aiortc SDP direction bug, attempting workaround...")
-                    from aiortc import rtcpeerconnection as rtc_module
-                    original_and_direction = rtc_module.and_direction
-
-                    def patched_and_direction(a, b):
-                        if a is None:
-                            a = "sendonly"
-                        if b is None:
-                            b = "sendonly"
-                        return original_and_direction(a, b)
-
-                    rtc_module.and_direction = patched_and_direction
-                    try:
-                        await pc.setLocalDescription(answer)
-                        logging.info("Successfully set local description with workaround")
-                    finally:
-                        rtc_module.and_direction = original_and_direction
-                else:
-                    raise
-            # Ensure localDescription is set before returning
-            if pc.localDescription is None:
-                logging.warning("pc.localDescription is None, waiting 100ms...")
-                await asyncio.sleep(0.1)
-            if pc.localDescription is None:
-                logging.error("pc.localDescription is still None after setLocalDescription. Cannot return answer.")
-                return web.json_response({"error": "Internal server error: no SDP answer generated"}, status=500)
-
-            logging.info(f"New connection established. Active connections: {len(self.peer_connections)}")
-            logging.info(f"Returning answer: type={pc.localDescription.type}, sdp_length={len(pc.localDescription.sdp) if pc.localDescription.sdp else 0}");
-
-            response_data = {
-                "sdp": pc.localDescription.sdp,
-                "type": pc.localDescription.type
-            }
-
-            # Validate response data before sending
-            if not response_data["sdp"] or not response_data["type"]:
-                logging.error(f"Invalid response data: sdp={bool(response_data['sdp'])}, type={response_data['type']}")
-                return web.json_response({"error": "Invalid SDP answer generated"}, status=500)
-
-            return web.json_response(response_data)
-
-        except Exception as e:
-            logging.error(f"Error handling offer: {e}", exc_info=True)
-            return web.json_response({"error": str(e)}, status=500)
-    
-    async def _shutdown(self):
-        """Graceful shutdown."""
-        logging.info("Shutting down server...")
-        # Close all peer connections
-        for pc in self.peer_connections.copy():
-            await pc.close()
-        sys.exit(0)
-    
-    async def start_server(self):
-        """Start the enhanced web server."""
-        self.start_time = time.time()
-        
-        runner = web_runner.AppRunner(self.app)
-        await runner.setup()
-        
-        site = web.TCPSite(
-            runner, 
-            self.network_config['host'], 
-            self.network_config['port']
-        )
-        await site.start()
-        
-        logging.info(f"Enhanced WebRTC server started on http://{self.network_config['host']}:{self.network_config['port']}")
-        logging.info(f"Maximum concurrent connections: {self.network_config['max_connections']}")
-        
-        try:
-            while True:
-                await asyncio.sleep(1)
-        except KeyboardInterrupt:
-            logging.info("Server stopped by user")
-        finally:
-            await runner.cleanup()
-    
-# End of WebRTCServer class
-
-async def main():
-    """Main function."""
-    print("Pi Zero Enhanced WebRTC Camera Server")
-    print("=====================================")
-    server = WebRTCServer()
-    await server.start_server()
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nServer stopped by user")
-    except Exception as e:
-        logging.error(f"Server error: {e}")
-        sys.exit(1)
+                            line = 'a=group:BUNDLE ' + (' '.join(mids) if mids
