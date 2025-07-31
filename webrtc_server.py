@@ -378,8 +378,8 @@ class CameraVideoTrack(VideoStreamTrack):
                 "--output", "-"  # Output to stdout
             ]
             
-            logger.info(f"Starting rpicam-vid process: {' '.join(rpicam_cmd)}");
-            this.rpicam_proc = subprocess.Popen(
+            logger.info(f"Starting rpicam-vid process: {' '.join(rpicam_cmd)}")
+            self.rpicam_proc = subprocess.Popen(
                 rpicam_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
@@ -387,11 +387,11 @@ class CameraVideoTrack(VideoStreamTrack):
             
             # Wait a moment and check if the process started correctly
             time.sleep(2)
-            if this.rpicam_proc.poll() is not None:
-                stderr_output = this.rpicam_proc.stderr.read().decode('utf-8', errors='ignore');
-                raise RuntimeError(f"rpicam-vid failed to start. Error: {stderr_output}");
+            if self.rpicam_proc.poll() is not None:
+                stderr_output = self.rpicam_proc.stderr.read().decode('utf-8', errors='ignore')
+                raise RuntimeError(f"rpicam-vid failed to start. Error: {stderr_output}")
 
-            logger.info("rpicam-vid process started successfully.");
+            logger.info("rpicam-vid process started successfully.")
 
         except FileNotFoundError:
             logger.error("rpicam-vid command not found. Please ensure 'rpicam-apps' is installed ('sudo apt-get install rpicam-apps').")
@@ -407,7 +407,7 @@ class CameraVideoTrack(VideoStreamTrack):
         loop = asyncio.get_event_loop()
         
         try:
-            frame_data = await loop.run_in_executor(None, this._read_mjpeg_frame)
+            frame_data = await loop.run_in_executor(None, self._read_mjpeg_frame)
             
             if frame_data:
                 arr = np.frombuffer(frame_data, dtype=np.uint8)
@@ -423,51 +423,51 @@ class CameraVideoTrack(VideoStreamTrack):
             logger.error(f"Error processing frame from rpicam-vid: {e}")
 
         # If anything fails, return a black frame
-        logger.warning("Returning black frame due to capture failure.");
-        black_frame = np.zeros((CONFIG["height"], CONFIG["width"], 3), dtype=np.uint8);
-        av_frame = VideoFrame.from_ndarray(black_frame, format="rgb24");
-        av_frame.pts = pts;
-        av_frame.time_base = time_base;
-        return av_frame;
+        logger.warning("Returning black frame due to capture failure.")
+        black_frame = np.zeros((CONFIG["height"], CONFIG["width"], 3), dtype=np.uint8)
+        av_frame = VideoFrame.from_ndarray(black_frame, format="rgb24")
+        av_frame.pts = pts
+        av_frame.time_base = time_base
+        return av_frame
 
     def _read_mjpeg_frame(self):
         """
         Reads a single MJPEG frame from the stdout of the rpicam-vid process.
         This is a blocking function and should be run in an executor.
         """
-        if not this.rpicam_proc or this.rpicam_proc.poll() is not None:
-            raise RuntimeError("rpicam-vid process is not running.");
+        if not self.rpicam_proc or self.rpicam_proc.poll() is not None:
+            raise RuntimeError("rpicam-vid process is not running.")
 
-        stdout = this.rpicam_proc.stdout;
+        stdout = self.rpicam_proc.stdout
         
         while True:
             # Find start and end markers in the existing buffer
-            soi = this._buffer.find(b'\xff\xd8')
+            soi = self._buffer.find(b'\xff\xd8')
             if soi != -1:
-                eoi = this._buffer.find(b'\xff\xd9', soi)
+                eoi = self._buffer.find(b'\xff\xd9', soi)
                 if eoi != -1:
-                    frame = this._buffer[soi : eoi + 2]
-                    this._buffer = this._buffer[eoi + 2:];
-                    return frame;
+                    frame = self._buffer[soi : eoi + 2]
+                    self._buffer = self._buffer[eoi + 2:]
+                    return frame
             
             # If a full frame is not in the buffer, read more data
-            chunk = stdout.read(4096);
+            chunk = stdout.read(4096)
             if not chunk:
-                raise EOFError("Camera stream ended.");
-            this._buffer += chunk;
+                raise EOFError("Camera stream ended.")
+            self._buffer += chunk
     
     def stop(self):
         """Stop the rpicam-vid process."""
-        if this.rpicam_proc:
-            logger.info("Terminating rpicam-vid process...");
-            this.rpicam_proc.terminate();
+        if self.rpicam_proc:
+            logger.info("Terminating rpicam-vid process...")
+            self.rpicam_proc.terminate()
             try:
-                this.rpicam_proc.wait(timeout=2);
+                self.rpicam_proc.wait(timeout=2)
             except subprocess.TimeoutExpired:
-                logger.warning("rpicam-vid did not terminate gracefully, killing.");
-                this.rpicam_proc.kill();
-            this.rpicam_proc = None;
-            logger.info("rpicam-vid process stopped.");
+                logger.warning("rpicam-vid did not terminate gracefully, killing.")
+                self.rpicam_proc.kill()
+            self.rpicam_proc = None
+            logger.info("rpicam-vid process stopped.")
 
 class WebRTCServer:
     """WebRTC server managing peer connections and signaling."""
@@ -494,127 +494,122 @@ class WebRTCServer:
     
     async def offer(self, request):
         """Handle WebRTC offer from client."""
-        try {
-            params = await request.json();
-            offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"]);
+        try:
+            params = await request.json()
+            offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
 
             # Get desired settings from client
-            width = int(params.get("width", CONFIG["width"]));
-            height = int(params.get("height", CONFIG["height"]));
-            fps = int(params.get("fps", CONFIG["fps"]));
+            width = int(params.get("width", CONFIG["width"]))
+            height = int(params.get("height", CONFIG["height"]))
+            fps = int(params.get("fps", CONFIG["fps"]))
 
             # Create RTCConfiguration
             config = RTCConfiguration(
                 iceServers=[RTCIceServer(**server) for server in CONFIG["ice_servers"]]
-            );
+            )
 
             # Create new peer connection
-            pc = RTCPeerConnection(configuration=config);
+            pc = RTCPeerConnection(configuration=config)
 
             # Add to tracking set
-            this.peer_connections.add(pc);
+            self.peer_connections.add(pc)
 
             # Create or reuse the video track
-            if this.video_track is None:
-                logger.info(f"Starting new camera track with {width}x{height} @ {fps}fps");
-                this.video_track = CameraVideoTrack(width, height, fps);
+            if self.video_track is None:
+                logger.info(f"Starting new camera track with {width}x{height} @ {fps}fps")
+                self.video_track = CameraVideoTrack(width, height, fps)
             else:
-                logger.info("Reusing existing camera track.");
+                logger.info("Reusing existing camera track.")
 
             @pc.on("connectionstatechange")
             async def on_connectionstatechange():
-                logger.info(f"Connection state: {pc.connectionState}");
+                logger.info(f"Connection state: {pc.connectionState}")
                 if pc.connectionState in ("failed", "closed", "disconnected"):
-                    await pc.close();
-                    this.peer_connections.discard(pc);
-                    if not this.peer_connections and this.video_track:
-                        logger.info("Last peer disconnected, stopping camera.");
-                        this.video_track.stop();
-                        this.video_track = None;
+                    await pc.close()
+                    self.peer_connections.discard(pc)
+                    if not self.peer_connections and self.video_track:
+                        logger.info("Last peer disconnected, stopping camera.")
+                        self.video_track.stop()
+                        self.video_track = None
             
             @pc.on("iceconnectionstatechange")
             async def on_iceconnectionstatechange():
-                logger.info(f"ICE connection state: {pc.iceConnectionState}");
+                logger.info(f"ICE connection state: {pc.iceConnectionState}")
             
             # Add video track
-            logger.info("Adding video track.");
-            pc.addTrack(this.video_track);
+            logger.info("Adding video track.")
+            pc.addTrack(self.video_track)
             
             # Set remote description
-            logger.info("Setting remote description...");
-            await pc.setRemoteDescription(offer);
+            logger.info("Setting remote description...")
+            await pc.setRemoteDescription(offer)
 
-            logger.info("Creating answer...");
-            answer = await pc.createAnswer();
+            logger.info("Creating answer...")
+            answer = await pc.createAnswer()
 
-            logger.info("Setting local description...");
-            await pc.setLocalDescription(answer);
+            logger.info("Setting local description...")
+            await pc.setLocalDescription(answer)
 
             if pc.localDescription and pc.localDescription.sdp:
-                logger.info(f"Successfully generated answer SDP of length {len(pc.localDescription.sdp)}");
+                logger.info(f"Successfully generated answer SDP of length {len(pc.localDescription.sdp)}")
                 return web.json_response({
                     "sdp": pc.localDescription.sdp,
                     "type": pc.localDescription.type
-                });
+                })
             else:
-                logger.error("Failed to generate valid local description.");
-                return web.json_response({"error": "Server failed to generate SDP answer"}, status=500);
+                logger.error("Failed to generate valid local description.")
+                return web.json_response({"error": "Server failed to generate SDP answer"}, status=500)
             
-        } except Exception as e {
-            logger.error(f"Error handling offer: {e}", exc_info=True);
-            return web.json_response({"error": str(e)}, status=500);
-    }
+        except Exception as e:
+            logger.error(f"Error handling offer: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
 
     async def start_server(self):
         """Start the web server."""
-        runner = web_runner.AppRunner(this.app);
-        await runner.setup();
+        runner = web_runner.AppRunner(self.app)
+        await runner.setup()
         
         site = web_runner.TCPSite(
             runner, 
             CONFIG["host"], 
             CONFIG["port"]
-        );
-        await site.start();
+        )
+        await site.start()
         
-        logger.info(f"WebRTC server started on http://{CONFIG['host']}:{CONFIG['port']}");
-        logger.info("Open the URL in your browser to view the stream");
+        logger.info(f"WebRTC server started on http://{CONFIG['host']}:{CONFIG['port']}")
+        logger.info("Open the URL in your browser to view the stream")
         
-        try {
+        try:
             # Keep the server running
-            while True {
-                await asyncio.sleep(1);
-            }
-        } except KeyboardInterrupt {
-            logger.info("Shutting down server...");
-        } finally {
+            while True:
+                await asyncio.sleep(1)
+        except KeyboardInterrupt:
+            logger.info("Shutting down server...")
+        finally:
             # Clean up connections
-            for pc in this.peer_connections.copy():
-                await pc.close();
-            this.peer_connections.clear();
+            for pc in self.peer_connections.copy():
+                await pc.close()
+            self.peer_connections.clear()
             
             # Stop the camera track
-            if this.video_track {
-                logger.info("Server shutting down, stopping camera.");
-                this.video_track.stop();
-            }
+            if self.video_track:
+                logger.info("Server shutting down, stopping camera.")
+                self.video_track.stop()
                 
-            await runner.cleanup();
-}
+            await runner.cleanup()
 
 async def main():
     """Main function to start the WebRTC server."""
-    logger.info("Starting Pi Zero WebRTC Camera Server");
-    logger.info(f"Configuration: {CONFIG}");
+    logger.info("Starting Pi Zero WebRTC Camera Server")
+    logger.info(f"Configuration: {CONFIG}")
     
-    server = WebRTCServer();
-    await server.start_server();
-}
+    server = WebRTCServer()
+    await server.start_server()
 
 if __name__ == "__main__":
-    try {
-        asyncio.run(main());
-    } except KeyboardInterrupt {
-        logger.info("Server stopped by user");
-    } except Exception as e {
-        logger.error(f"Server error: {e}");
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Server stopped by user")
+    except Exception as e:
+        logger.error(f"Server error: {e}")
