@@ -1006,10 +1006,10 @@ document.addEventListener('visibilitychange', () => {
                         logging.info(f"Fixed transceiver directions: direction={transceiver._direction}, offerDirection={getattr(transceiver, '_offerDirection', 'None')}")
             
             logging.info("Setting local description...")
-            try {
+            try:
                 await pc.setLocalDescription(answer)
-            } catch (ValueError as ve) {
-                if ("None is not in list" in str(ve)) {
+            except ValueError as ve:
+                if "None is not in list" in str(ve):
                     logging.error("Encountered aiortc SDP direction bug, attempting workaround...")
                     # Patch the problematic method temporarily
                     from aiortc import rtcpeerconnection as rtc_module
@@ -1023,25 +1023,21 @@ document.addEventListener('visibilitychange', () => {
                         return original_and_direction(a, b)
 
                     rtc_module.and_direction = patched_and_direction
-                    try {
+                    try:
                         await pc.setLocalDescription(answer)
                         logging.info("Successfully set local description with workaround")
-                    } finally {
+                    finally:
                         rtc_module.and_direction = original_and_direction
-                    }
-                } else {
+                else:
                     raise
-            }
             
             # Ensure localDescription is set before returning
-            if (pc.localDescription is None) {
+            if pc.localDescription is None:
                 logging.warning("pc.localDescription is None, waiting 100ms...")
                 await asyncio.sleep(0.1)
-            }
-            if (pc.localDescription is None) {
+            if pc.localDescription is None:
                 logging.error("pc.localDescription is still None after setLocalDescription. Cannot return answer.")
                 return web.json_response({"error": "Internal server error: no SDP answer generated"}, status=500)
-            }
 
             logging.info(f"New connection established. Active connections: {len(self.peer_connections)}")
             logging.info(f"Returning answer: type={pc.localDescription.type}, sdp_length={len(pc.localDescription.sdp) if pc.localDescription.sdp else 0}");
@@ -1052,14 +1048,13 @@ document.addEventListener('visibilitychange', () => {
             }
 
             # Validate response data before sending
-            if (!response_data["sdp"] || !response_data["type"]) {
+            if not response_data["sdp"] or not response_data["type"]:
                 logging.error(f"Invalid response data: sdp={bool(response_data['sdp'])}, type={response_data['type']}")
                 return web.json_response({"error": "Invalid SDP answer generated"}, status=500)
-            }
 
             return web.json_response(response_data)
 
-        } catch (Exception as e) {
+        except Exception as e:
             logging.error(f"Error handling offer: {e}", exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
     
