@@ -59,9 +59,17 @@ This server uses a modern and efficient pipeline for streaming:
 
 To run the server directly for development without installing the service:
 
-1.  Make sure you have installed the dependencies with `./install.sh`.
-2.  Run the server directly:
+1.  Make sure you have installed the dependencies and created the virtual environment by running `./install.sh`.
+2.  Activate the virtual environment:
+    ```bash
+    source venv/bin/activate
+    ```
+3.  Run the server directly:
     ```bash
     python3 webrtc_server.py
     ```
-3.  Press `Ctrl+C` to stop the server.
+4.  Press `Ctrl+C` to stop the server.
+5.  When you are finished, you can deactivate the virtual environment by simply running:
+    ```bash
+    deactivate
+    ```
