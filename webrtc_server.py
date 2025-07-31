@@ -267,6 +267,7 @@ class WebRTCServer:
     <div class="controls">
         <button id="startBtn" onclick="start()">Start Stream</button>
         <button id="stopBtn" onclick="stop()" disabled>Stop Stream</button>
+        <button id="fullscreenBtn" onclick="toggleFullScreen()" disabled>Fullscreen</button>
     </div>
     
     <div id="status" class="status disconnected">Disconnected</div>
@@ -385,6 +386,7 @@ async function start() {
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
         
         stopBtn.disabled = false;
+        document.getElementById('fullscreenBtn').disabled = false;
         
     } catch (error) {
         console.error('Error starting stream:', error);
@@ -411,6 +413,20 @@ function stop() {
     
     startBtn.disabled = false;
     stopBtn.disabled = true;
+    document.getElementById('fullscreenBtn').disabled = true;
+}
+
+function toggleFullScreen() {
+    const video = document.getElementById('video');
+    if (!document.fullscreenElement) {
+        video.requestFullscreen().catch(err => {
+            alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+        });
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        }
+    }
 }
 
 // Handle page visibility changes to maintain connection
