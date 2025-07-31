@@ -893,7 +893,6 @@ document.addEventListener('visibilitychange', () => {
                 # Add track with explicit direction and kind to avoid aiortc SDP direction bug
                 transceiver = pc.addTransceiver(video_track, direction="sendonly")
                 logging.info(f"Added video track to peer connection with direction: {transceiver.direction}")
-                
                 # Force MID assignment before creating answer - this is critical for BUNDLE groups
                 transceiver._mid = "0"
                 logging.info(f"Assigned MID '0' to video transceiver")
@@ -958,6 +957,16 @@ document.addEventListener('visibilitychange', () => {
                         if not setup_present:
                             sdp_lines.insert(insert_pos, 'a=setup:actpass')
                             logging.info("Inserted missing DTLS setup line after m=video")
+                        # Ensure a=rtcp-mux is present in the video section
+                        rtcp_mux_present = False
+                        for offset in range(1, 10):
+                            if idx + offset < len(sdp_lines):
+                                if sdp_lines[idx + offset].startswith('a=rtcp-mux'):
+                                    rtcp_mux_present = True
+                        if not rtcp_mux_present:
+                            sdp_lines.insert(insert_pos, 'a=rtcp-mux')
+                            logging.info("Inserted missing a=rtcp-mux after m=video")
+                            insert_pos += 1
                         break;
                 # If no video section, add one at the end
                 if not video_section_found:
@@ -968,8 +977,9 @@ document.addEventListener('visibilitychange', () => {
                     sdp_lines.append(f'a=ice-ufrag:{ice_ufrag}')
                     sdp_lines.append(f'a=ice-pwd:{ice_pwd}')
                     sdp_lines.append('a=setup:actpass')
+                    sdp_lines.append('a=rtcp-mux')
                     mids = ['0']
-                    logging.info("Added missing m=video section with a=mid:0, ICE credentials, and DTLS setup")
+                    logging.info("Added missing m=video section with a=mid:0, ICE credentials, DTLS setup, and a=rtcp-mux")
                 # Patch BUNDLE line and DTLS setup
                 fixed_sdp_lines = []
                 for line in sdp_lines:
@@ -996,13 +1006,13 @@ document.addEventListener('visibilitychange', () => {
                         logging.info(f"Fixed transceiver directions: direction={transceiver._direction}, offerDirection={getattr(transceiver, '_offerDirection', 'None')}")
             
             logging.info("Setting local description...")
-            try:
+            try {
                 await pc.setLocalDescription(answer)
-            except ValueError as ve:
-                if "None is not in list" in str(ve):
+            } catch (ValueError as ve) {
+                if ("None is not in list" in str(ve)) {
                     logging.error("Encountered aiortc SDP direction bug, attempting workaround...")
                     # Patch the problematic method temporarily
-                    import aiortc.rtcpeerconnection as rtc_module
+                    from aiortc import rtcpeerconnection as rtc_module
                     original_and_direction = rtc_module.and_direction
 
                     def patched_and_direction(a, b):
@@ -1013,21 +1023,25 @@ document.addEventListener('visibilitychange', () => {
                         return original_and_direction(a, b)
 
                     rtc_module.and_direction = patched_and_direction
-                    try:
+                    try {
                         await pc.setLocalDescription(answer)
                         logging.info("Successfully set local description with workaround")
-                    finally:
+                    } finally {
                         rtc_module.and_direction = original_and_direction
-                else:
+                    }
+                } else {
                     raise
+            }
             
             # Ensure localDescription is set before returning
-            if pc.localDescription is None:
+            if (pc.localDescription is None) {
                 logging.warning("pc.localDescription is None, waiting 100ms...")
                 await asyncio.sleep(0.1)
-            if pc.localDescription is None:
+            }
+            if (pc.localDescription is None) {
                 logging.error("pc.localDescription is still None after setLocalDescription. Cannot return answer.")
                 return web.json_response({"error": "Internal server error: no SDP answer generated"}, status=500)
+            }
 
             logging.info(f"New connection established. Active connections: {len(self.peer_connections)}")
             logging.info(f"Returning answer: type={pc.localDescription.type}, sdp_length={len(pc.localDescription.sdp) if pc.localDescription.sdp else 0}");
@@ -1038,15 +1052,17 @@ document.addEventListener('visibilitychange', () => {
             }
 
             # Validate response data before sending
-            if not response_data["sdp"] or not response_data["type"]:
+            if (!response_data["sdp"] || !response_data["type"]) {
                 logging.error(f"Invalid response data: sdp={bool(response_data['sdp'])}, type={response_data['type']}")
                 return web.json_response({"error": "Invalid SDP answer generated"}, status=500)
+            }
 
             return web.json_response(response_data)
 
-        except Exception as e:
+        } catch (Exception as e) {
             logging.error(f"Error handling offer: {e}", exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
+    
     async def _shutdown(self):
         """Graceful shutdown."""
         logging.info("Shutting down server...")
@@ -1072,14 +1088,16 @@ document.addEventListener('visibilitychange', () => {
         logging.info(f"Enhanced WebRTC server started on http://{self.network_config['host']}:{self.network_config['port']}")
         logging.info(f"Maximum concurrent connections: {self.network_config['max_connections']}")
         
-        try:
-            while True:
+        try {
+            while true {
                 await asyncio.sleep(1)
-        except KeyboardInterrupt:
+            }
+        } catch (KeyboardInterrupt) {
             logging.info("Server stopped by user")
-        finally:
+        } finally {
             await runner.cleanup()
-
+        }
+    
 # End of WebRTCServer class
 
 async def main():
