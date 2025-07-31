@@ -1073,29 +1073,27 @@ document.addEventListener('visibilitychange', () => {
         logging.info(f"Enhanced WebRTC server started on http://{self.network_config['host']}:{self.network_config['port']}")
         logging.info(f"Maximum concurrent connections: {self.network_config['max_connections']}")
         
-        try {
+        try:
             while True:
                 await asyncio.sleep(1)
-        } catch (KeyboardInterrupt) {
+        except KeyboardInterrupt:
             logging.info("Server stopped by user")
-        } finally {
+        finally:
             await runner.cleanup()
-        }
-    }
-
-async def main():
-    """Main function."""
-    print("Pi Zero Enhanced WebRTC Camera Server")
-    print("=====================================")
     
-    server = WebRTCServer()
-    await server.start_server()
+    async def main():
+        """Main function."""
+        print("Pi Zero Enhanced WebRTC Camera Server")
+        print("=====================================")
+        
+        server = WebRTCServer()
+        await server.start_server()
 
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nServer stopped by user")
-    except Exception as e:
-        logging.error(f"Server error: {e}")
-        sys.exit(1)
+    if __name__ == "__main__":
+        try:
+            asyncio.run(main())
+        except KeyboardInterrupt:
+            print("\nServer stopped by user")
+        except Exception as e:
+            logging.error(f"Server error: {e}")
+            sys.exit(1)
