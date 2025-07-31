@@ -911,6 +911,22 @@ document.addEventListener('visibilitychange', () => {
                 for i, line in enumerate(sdp_lines[:10]):
                     logging.debug(f"  {i}: {line}")
                 
+                # --- NEW: Check if offer contains audio, and patch answer accordingly ---
+                offer_sdp_lines = offer.sdp.split('\n')
+                offer_has_audio = any(line.startswith('m=audio') for line in offer_sdp_lines)
+                answer_has_audio = any(line.startswith('m=audio') for line in sdp_lines)
+                if offer_has_audio and not answer_has_audio:
+                    # Insert a disabled audio section at the top of the answer SDP
+                    audio_section = [
+                        'm=audio 0 UDP/TLS/RTP/SAVPF 0',
+                        'c=IN IP4 0.0.0.0',
+                        'a=inactive',
+                        'a=mid:audio0',
+                        'a=rtcp-mux'
+                    ]
+                    sdp_lines = audio_section + sdp_lines
+                    logging.info("Inserted disabled audio section in SDP answer to match offer")
+
                 # Find ICE credentials from SDP if present
                 ice_ufrag = None
                 ice_pwd = None
