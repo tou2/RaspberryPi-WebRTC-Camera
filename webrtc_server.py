@@ -403,34 +403,16 @@ document.addEventListener('visibilitychange', () => {
             async def on_iceconnectionstatechange():
                 logger.info(f"ICE connection state: {pc.iceConnectionState}")
             
-            # Add video track
-            video_track = CameraVideoTrack()
-            pc.addTrack(video_track)
+            # Add video track using addTransceiver for more control over direction
+            logger.info("Adding video transceiver with direction 'sendonly'.")
+            pc.addTransceiver(CameraVideoTrack(), direction="sendonly")
             
             # Set remote description
             logger.info("Setting remote description...")
             await pc.setRemoteDescription(offer)
 
-            # Proactively set transceiver direction to avoid aiortc bug
-            logger.info("Applying workaround for aiortc transceiver direction bug.")
-            for t in pc.getTransceivers():
-                if t.kind == "video":
-                    t.direction = "sendonly"
-
             logger.info("Creating answer...")
             answer = await pc.createAnswer()
-
-            # Manually patch SDP for robustness
-            logger.info("Manually patching SDP answer.")
-            patched_sdp = ""
-            for line in answer.sdp.splitlines():
-                if line.startswith("a=mid:video"):
-                    patched_sdp += line + "\r\n"
-                    patched_sdp += "a=setup:passive\r\n"
-                else:
-                    patched_sdp += line + "\r\n"
-            
-            answer = RTCSessionDescription(sdp=patched_sdp, type=answer.type)
 
             logger.info("Setting local description...")
             await pc.setLocalDescription(answer)
