@@ -958,32 +958,30 @@ document.addEventListener('visibilitychange', () => {
                         offer_video_mid = line.split(':', 1)[1].strip()
                         in_video = False
                 # --- Patch answer SDP ---
-                if offer_has_audio && !answer_has_audio {
-                    audio_mid = offer_audio_mid ? offer_audio_mid : '0';
+                if offer_has_audio and not answer_has_audio:
+                    audio_mid = offer_audio_mid if offer_audio_mid else '0'
                     audio_section = [
                         'm=audio 0 UDP/TLS/RTP/SAVPF 0',
                         'c=IN IP4 0.0.0.0',
                         'a=inactive',
-                        `a=mid:${audio_mid}`,
+                        f'a=mid:{audio_mid}',
                         'a=rtcp-mux'
-                    ];
-                    sdp_lines = audio_section.concat(sdp_lines);
-                    logging.info(`Inserted disabled audio section in SDP answer to match offer MID: ${audio_mid}`);
-                }
-                // Find all mids in media sections (use offer MIDs for BUNDLE)
+                    ]
+                    sdp_lines = audio_section + sdp_lines
+                    logging.info(f"Inserted disabled audio section in SDP answer to match offer MID: {audio_mid}")
+                # Find all mids in media sections (use offer MIDs for BUNDLE)
                 mids = []
-                if (offer_audio_mid) {
-                    mids.push(offer_audio_mid)
-                }
-                if (offer_video_mid) {
-                    mids.push(offer_video_mid)
-                }
-                // If not found, fallback to all answer MIDs
-                if (mids.length === 0) {
-                    mids = sdp_lines.filter(line => line.startsWith('a=mid:')).map(line => line.split(':', 1)[1].trim())
-                }
-
-                // Find ICE credentials from SDP if present
+                if offer_audio_mid:
+                    mids.append(offer_audio_mid)
+                if offer_video_mid:
+                    mids.append(offer_video_mid)
+                # If not found, fallback to all answer MIDs
+                if not mids:
+                    mids = [line.split(':', 1)[1].strip() for line in sdp_lines if line.startswith('a=mid:')]
+                # If not found, fallback to all answer MIDs
+                if not mids:
+                    mids = [line.split(':', 1)[1].strip() for line in sdp_lines if line.startswith('a=mid:')]
+                # Find ICE credentials from SDP if present
                 ice_ufrag = None
                 ice_pwd = None
                 for line in sdp_lines:
@@ -1041,30 +1039,30 @@ document.addEventListener('visibilitychange', () => {
                             insert_pos += 1
                         break;
                 # If no video section, add one at the end
-                if !video_section_found {
-                    sdp_lines.push('m=video 9 UDP/TLS/RTP/SAVPF 96');
-                    sdp_lines.push('c=IN IP4 0.0.0.0');
-                    sdp_lines.push('a=rtpmap:96 VP8/90000');
-                    sdp_lines.push('a=mid:0');
-                    sdp_lines.push(`a=ice-ufrag:${ice_ufrag}`);
-                    sdp_lines.push(`a=ice-pwd:${ice_pwd}`);
-                    sdp_lines.push('a=setup:actpass');
-                    sdp_lines.push('a=rtcp-mux');
+                if not video_section_found:
+                    sdp_lines.append('m=video 9 UDP/TLS/RTP/SAVPF 96')
+                    sdp_lines.append('c=IN IP4 0.0.0.0')
+                    sdp_lines.append('a=rtpmap:96 VP8/90000')
+                    sdp_lines.append('a=mid:0')
+                    sdp_lines.append(f'a=ice-ufrag:{ice_ufrag}')
+                    sdp_lines.append(f'a=ice-pwd:{ice_pwd}')
+                    sdp_lines.append('a=setup:actpass')
+                    sdp_lines.append('a=rtcp-mux')
                     mids = ['0']
                     logging.info("Added missing m=video section with a=mid:0, ICE credentials, DTLS setup, and a=rtcp-mux")
                 # Patch BUNDLE line and DTLS setup
                 fixed_sdp_lines = []
                 for line in sdp_lines:
-                    if line.startsWith('a=group:BUNDLE'):
+                    if line.startswith('a=group:BUNDLE'):
                         # Replace with correct mids
-                        line = 'a=group:BUNDLE ' + (' '.join(mids) if mids else '0');
+                        line = 'a=group:BUNDLE ' + (' '.join(mids) if mids else '0')
                         logging.info(f"Fixed BUNDLE line: {line}")
-                    if line.startsWith('a=setup:actpass'):
-                        line = 'a=setup:passive';
+                    if line.startswith('a=setup:actpass'):
+                        line = 'a=setup:passive'
                         logging.info("Replaced DTLS setup attribute with 'passive' for answer")
-                    fixed_sdp_lines.push(line)
+                    fixed_sdp_lines.append(line)
                 # Update the answer with fixed SDP
-                answer = RTCSessionDescription(sdp=fixed_sdp_lines.join('\n'), type:answer.type)
+                answer = RTCSessionDescription(sdp='\n'.join(fixed_sdp_lines), type=answer.type)
                 logging.info("Applied robust SDP fixes for BUNDLE/MID, media section, ICE credentials, and DTLS setup issues")
             
             # Fix transceiver directions before setting local description
@@ -1078,9 +1076,9 @@ document.addEventListener('visibilitychange', () => {
                         logging.info(f"Fixed transceiver directions: direction={transceiver._direction}, offerDirection={getattr(transceiver, '_offerDirection', 'None')}")
             
             logging.info("Setting local description...")
-            try {
+            try:
                 await pc.setLocalDescription(answer)
-            } catch (ValueError ve) {
+            except ValueError as ve:
                 if "None is not in list" in str(ve):
                     logging.error("Encountered aiortc SDP direction bug, attempting workaround...")
                     # Patch the problematic method temporarily
@@ -1095,17 +1093,13 @@ document.addEventListener('visibilitychange', () => {
                         return original_and_direction(a, b)
 
                     rtc_module.and_direction = patched_and_direction
-                    try {
+                    try:
                         await pc.setLocalDescription(answer)
                         logging.info("Successfully set local description with workaround")
-                    } finally {
+                    finally:
                         rtc_module.and_direction = original_and_direction
-                    }
-                else {
+                else:
                     raise
-                }
-            }
-            
             # Ensure localDescription is set before returning
             if pc.localDescription is None:
                 logging.warning("pc.localDescription is None, waiting 100ms...")
