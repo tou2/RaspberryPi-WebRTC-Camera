@@ -944,7 +944,7 @@ document.addEventListener('visibilitychange', () => {
                                     ice_present = True
                                 if sdp_lines[idx + offset].startswith('a=setup:'):
                                     setup_present = True
-                        insert_pos = idx + 1
+                        insert_pos = idx + 1;
                         if not mid_present:
                             sdp_lines.insert(insert_pos, 'a=mid:0')
                             mids = ['0']
@@ -958,7 +958,7 @@ document.addEventListener('visibilitychange', () => {
                         if not setup_present:
                             sdp_lines.insert(insert_pos, 'a=setup:actpass')
                             logging.info("Inserted missing DTLS setup line after m=video")
-                        break
+                        break;
                 # If no video section, add one at the end
                 if not video_section_found:
                     sdp_lines.append('m=video 9 UDP/TLS/RTP/SAVPF 96')
@@ -1030,7 +1030,7 @@ document.addEventListener('visibilitychange', () => {
                 return web.json_response({"error": "Internal server error: no SDP answer generated"}, status=500)
 
             logging.info(f"New connection established. Active connections: {len(self.peer_connections)}")
-            logging.info(f"Returning answer: type={pc.localDescription.type}, sdp_length={len(pc.localDescription.sdp) if pc.localDescription.sdp else 0}")
+            logging.info(f"Returning answer: type={pc.localDescription.type}, sdp_length={len(pc.localDescription.sdp) if pc.localDescription.sdp else 0}");
 
             response_data = {
                 "sdp": pc.localDescription.sdp,
@@ -1047,7 +1047,6 @@ document.addEventListener('visibilitychange', () => {
         except Exception as e:
             logging.error(f"Error handling offer: {e}", exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
-
     async def _shutdown(self):
         """Graceful shutdown."""
         logging.info("Shutting down server...")
@@ -1080,20 +1079,21 @@ document.addEventListener('visibilitychange', () => {
             logging.info("Server stopped by user")
         finally:
             await runner.cleanup()
-    
-    async def main():
-        """Main function."""
-        print("Pi Zero Enhanced WebRTC Camera Server")
-        print("=====================================")
-        
-        server = WebRTCServer()
-        await server.start_server()
 
-    if __name__ == "__main__":
-        try:
-            asyncio.run(main())
-        except KeyboardInterrupt:
-            print("\nServer stopped by user")
-        except Exception as e:
-            logging.error(f"Server error: {e}")
-            sys.exit(1)
+# End of WebRTCServer class
+
+async def main():
+    """Main function."""
+    print("Pi Zero Enhanced WebRTC Camera Server")
+    print("=====================================")
+    server = WebRTCServer()
+    await server.start_server()
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nServer stopped by user")
+    except Exception as e:
+        logging.error(f"Server error: {e}")
+        sys.exit(1)
