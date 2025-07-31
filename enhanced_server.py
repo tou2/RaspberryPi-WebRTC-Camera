@@ -957,7 +957,7 @@ document.addEventListener('visibilitychange', () => {
                     elif in_video and line.startswith('a=mid:'):
                         offer_video_mid = line.split(':', 1)[1].strip()
                         in_video = False
-                // --- Patch answer SDP ---
+                # --- Patch answer SDP ---
                 if offer_has_audio && !answer_has_audio {
                     audio_mid = offer_audio_mid ? offer_audio_mid : '0';
                     audio_section = [
