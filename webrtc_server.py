@@ -415,7 +415,15 @@ document.addEventListener('visibilitychange', () => {
             answer = await pc.createAnswer()
 
             logger.info("Setting local description...")
-            await pc.setLocalDescription(answer)
+            try:
+                await pc.setLocalDescription(answer)
+            except ValueError:
+                logger.warning("Caught ValueError on setLocalDescription, applying workaround for aiortc bug.")
+                # Workaround for https://github.com/aiortc/aiortc/issues/363
+                for t in pc.getTransceivers():
+                    if t.kind == "video":
+                        t.direction = "sendonly"
+                await pc.setLocalDescription(answer)
 
             if pc.localDescription and pc.localDescription.sdp:
                 logger.info(f"Successfully generated answer SDP of length {len(pc.localDescription.sdp)}")
