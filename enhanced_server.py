@@ -1002,25 +1002,75 @@ document.addEventListener('visibilitychange', () => {
                             line = 'a=group:BUNDLE ' + (' '.join(mids) if mids else '0')
                             logging.info(f"Fixed BUNDLE line: {line}")
                         if line.startswith('a=setup:actpass'):
-                            line = 'a=setup:actpass'
-                        fixed_sdp_lines.push(line)
-                    sdp_lines = fixed_sdp_lines
-                    logging.info("Patched SDP lines:")
-                    for i, line in enumerate(sdp_lines):
-                        logging.info(f"  {i}: {line}")
-                
-                # Set the modified SDP as the local description
-                await pc.setLocalDescription(answer)
+                            line = 'a=setup:passive'
+                            logging.info("Replaced DTLS setup attribute with 'passive' for answer")
+                        fixed_sdp_lines.append(line)
+                    
+                    # Update the answer with fixed SDP
+                    answer = RTCSessionDescription(sdp='\n'.join(fixed_sdp_lines), type=answer.type)
+                    logging.info("Applied robust SDP fixes for video-only, BUNDLE/MID, ICE credentials, and DTLS setup issues")
             
-            return web.json_response({
+            # Fix transceiver directions before setting local description
+            for transceiver in pc.getTransceivers():
+                if transceiver.sender.track and hasattr(transceiver.sender.track, '__class__'):
+                    if 'CameraTrack' in transceiver.sender.track.__class__.__name__:
+                        # Set both direction attributes to avoid aiortc SDP direction bug
+                        transceiver._direction = "sendonly"
+                        transceiver._offerDirection = "sendonly"
+                        transceiver._currentDirection = "sendonly"
+                        logging.info(f"Fixed transceiver directions: direction={transceiver._direction}, offerDirection={getattr(transceiver, '_offerDirection', 'None')}")
+            
+            logging.info("Setting local description...")
+            try:
+                await pc.setLocalDescription(answer)
+            except ValueError as ve:
+                if "None is not in list" in str(ve):
+                    logging.error("Encountered aiortc SDP direction bug, attempting workaround...")
+                    # Patch the problematic method temporarily
+                    from aiortc import rtcpeerconnection as rtc_module
+                    original_and_direction = rtc_module.and_direction
+
+                    def patched_and_direction(a, b):
+                        if a is None:
+                            a = "sendonly"
+                        if b is None:
+                            b = "sendonly"
+                        return original_and_direction(a, b)
+
+                    rtc_module.and_direction = patched_and_direction
+                    try:
+                        await pc.setLocalDescription(answer)
+                        logging.info("Successfully set local description with workaround")
+                    finally:
+                        rtc_module.and_direction = original_and_direction
+                else:
+                    raise
+            # Ensure localDescription is set before returning
+            if pc.localDescription is None:
+                logging.warning("pc.localDescription is None, waiting 100ms...")
+                await asyncio.sleep(0.1)
+            if pc.localDescription is None:
+                logging.error("pc.localDescription is still None after setLocalDescription. Cannot return answer.")
+                return web.json_response({"error": "Internal server error: no SDP answer generated"}, status=500)
+
+            logging.info(f"New connection established. Active connections: {len(self.peer_connections)}")
+            logging.info(f"Returning answer: type={pc.localDescription.type}, sdp_length={len(pc.localDescription.sdp) if pc.localDescription.sdp else 0}")
+
+            response_data = {
                 "sdp": pc.localDescription.sdp,
-                "type": pc.localDescription.type,
-            })
+                "type": pc.localDescription.type
+            }
+
+            # Validate response data before sending
+            if not response_data["sdp"] or not response_data["type"]:
+                logging.error(f"Invalid response data: sdp={bool(response_data['sdp'])}, type={response_data['type']}")
+                return web.json_response({"error": "Invalid SDP answer generated"}, status=500)
+
+            return web.json_response(response_data)
+
         except Exception as e:
-            logging.error(f"Error handling offer: {e}")
-            return web.json_response({
-                "error": str(e)
-            }, status=500)
+            logging.error(f"Error handling offer: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
     
     async def _shutdown(self):
         """Shutdown server gracefully."""
