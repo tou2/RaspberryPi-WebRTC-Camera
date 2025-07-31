@@ -10,7 +10,6 @@ import subprocess
 import time
 from typing import Set
 
-import cv2
 from aiohttp import web, web_runner
 from aiortc import (
     RTCPeerConnection,
@@ -20,7 +19,6 @@ from aiortc import (
     RTCIceServer,
 )
 from av import VideoFrame
-import numpy as np
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -362,6 +360,8 @@ class CameraVideoTrack(VideoStreamTrack):
         self.width = width
         self.height = height
         self.fps = fps
+        # Calculate the size of a single YUV420p frame.
+        self.frame_size = self.width * self.height * 3 // 2
         self._setup_camera()
         
     def _setup_camera(self):
@@ -373,7 +373,7 @@ class CameraVideoTrack(VideoStreamTrack):
                 "--width", str(self.width),
                 "--height", str(self.height),
                 "--framerate", str(self.fps),
-                "--codec", "mjpeg",
+                "--codec", "yuv420p",  # Request raw YUV420p frames
                 "--nopreview",
                 "--output", "-"  # Output to stdout
             ]
@@ -401,60 +401,50 @@ class CameraVideoTrack(VideoStreamTrack):
             raise
 
     async def recv(self):
-        """Read the next frame from the rpicam-vid process."""
+        """Read the next raw YUV420p frame from the rpicam-vid process."""
         pts, time_base = await self.next_timestamp()
         
         loop = asyncio.get_event_loop()
         
         try:
-            frame_data = await loop.run_in_executor(None, self._read_mjpeg_frame)
+            # This is a blocking read, so run it in an executor.
+            frame_data = await loop.run_in_executor(None, self._read_yuv_frame)
             
             if frame_data:
-                arr = np.frombuffer(frame_data, dtype=np.uint8)
-                frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-                
-                if frame is not None:
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
-                    av_frame.pts = pts
-                    av_frame.time_base = time_base
-                    return av_frame
+                # Create a VideoFrame directly from the raw YUV420p buffer.
+                # This avoids any decoding/encoding and is very efficient.
+                av_frame = VideoFrame.from_buffer(
+                    frame_data, width=self.width, height=self.height, format="yuv420p"
+                )
+                av_frame.pts = pts
+                av_frame.time_base = time_base
+                return av_frame
         except Exception as e:
             logger.error(f"Error processing frame from rpicam-vid: {e}")
 
-        # If anything fails, return a black frame
-        logger.warning("Returning black frame due to capture failure.")
-        black_frame = np.zeros((CONFIG["height"], CONFIG["width"], 3), dtype=np.uint8)
-        av_frame = VideoFrame.from_ndarray(black_frame, format="rgb24")
-        av_frame.pts = pts
-        av_frame.time_base = time_base
-        return av_frame
+        # This part should ideally not be reached.
+        return None
 
-    def _read_mjpeg_frame(self):
+    def _read_yuv_frame(self):
         """
-        Reads a single MJPEG frame from the stdout of the rpicam-vid process.
+        Reads a single raw YUV420p frame from the stdout of the rpicam-vid process.
         This is a blocking function and should be run in an executor.
         """
         if not self.rpicam_proc or self.rpicam_proc.poll() is not None:
             raise RuntimeError("rpicam-vid process is not running.")
 
-        stdout = self.rpicam_proc.stdout
-        
-        while True:
-            # Find start and end markers in the existing buffer
-            soi = self._buffer.find(b'\xff\xd8')
-            if soi != -1:
-                eoi = self._buffer.find(b'\xff\xd9', soi)
-                if eoi != -1:
-                    frame = self._buffer[soi : eoi + 2]
-                    self._buffer = self._buffer[eoi + 2:]
-                    return frame
-            
-            # If a full frame is not in the buffer, read more data
-            chunk = stdout.read(4096)
+        # Read exactly one frame's worth of bytes.
+        # The buffer helps ensure we read a complete frame even if the OS
+        # provides the data in smaller chunks.
+        while len(self._buffer) < self.frame_size:
+            chunk = self.rpicam_proc.stdout.read(4096)
             if not chunk:
                 raise EOFError("Camera stream ended.")
             self._buffer += chunk
+        
+        frame_data = self._buffer[:self.frame_size]
+        self._buffer = self._buffer[self.frame_size:]
+        return frame_data
     
     def stop(self):
         """Stop the rpicam-vid process."""
