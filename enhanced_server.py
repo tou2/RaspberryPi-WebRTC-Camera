@@ -944,8 +944,7 @@ document.addEventListener('visibilitychange', () => {
                     if not ice_pwd:
                         ice_pwd = 'dummypwd1234567890'
                     video_section_found = False
-                    for idx in range(len(sdp_lines)):
-                        line = sdp_lines[idx]
+                    for idx, line in enumerate(sdp_lines):
                         if line.startswith('m=video'):
                             video_section_found = True
                             mid_present = False
@@ -959,63 +958,52 @@ document.addEventListener('visibilitychange', () => {
                                         ice_present = True
                                     if sdp_lines[idx + offset].startswith('a=setup:'):
                                         setup_present = True
-                            insert_pos = idx + 1;
-                            if (!mid_present) {
-                                sdp_lines.insert(insert_pos, 'a=mid:0');
-                                mids = ['0'];
-                                logging.info("Inserted missing a=mid:0 after m=video");
-                                insert_pos += 1;
-                            }
-                            if (!ice_present) {
-                                sdp_lines.insert(insert_pos, `a=ice-ufrag:${ice_ufrag}`);
-                                sdp_lines.insert(insert_pos + 1, `a=ice-pwd:${ice_pwd}`);
-                                logging.info("Inserted missing ICE credentials after m=video");
-                                insert_pos += 2;
-                            }
-                            if (!setup_present) {
-                                sdp_lines.insert(insert_pos, 'a=setup:actpass');
-                                logging.info("Inserted missing DTLS setup line after m=video");
-                            }
-                            rtcp_mux_present = false;
-                            for (offset = 1; offset < 10; offset++) {
-                                if (idx + offset < sdp_lines.length) {
-                                    if (sdp_lines[idx + offset].startswith('a=rtcp-mux')) {
-                                        rtcp_mux_present = true;
-                                    }
-                            }
-                            if (!rtcp_mux_present) {
-                                sdp_lines.insert(insert_pos, 'a=rtcp-mux');
-                                logging.info("Inserted missing a=rtcp-mux after m=video");
-                                insert_pos += 1;
-                            }
-                            break;
-                        }
-                    if (!video_section_found) {
-                        sdp_lines.push('m=video 9 UDP/TLS/RTP/SAVPF 96');
-                        sdp_lines.push('c=IN IP4 0.0.0.0');
-                        sdp_lines.push('a=rtpmap:96 VP8/90000');
-                        sdp_lines.push('a=mid:0');
-                        sdp_lines.push(f'a=ice-ufrag:{ice_ufrag}');
-                        sdp_lines.push(f'a=ice-pwd:{ice_pwd}');
-                        sdp_lines.push('a=setup:actpass');
-                        sdp_lines.push('a=rtcp-mux');
-                        mids = ['0'];
-                        logging.info("Added missing m=video section with a=mid:0, ICE credentials, DTLS setup, and a=rtcp-mux");
-                    }
-                    fixed_sdp_lines = [];
-                    for (line of sdp_lines) {
-                        if (line.startswith('a=group:BUNDLE')) {
-                            line = 'a=group:BUNDLE ' + (' '.join(mids) if mids : '0');
-                            logging.info(`Fixed BUNDLE line: ${line}`);
-                        }
-                        if (line.startswith('a=setup:actpass')) {
-                            line = 'a=setup:passive';
-                            logging.info("Replaced DTLS setup attribute with 'passive' for answer");
-                        }
-                        fixed_sdp_lines.push(line);
-                    }
-                    answer = RTCSessionDescription(sdp='\n'.join(fixed_sdp_lines), type=answer.type);
-                    logging.info("Applied robust SDP fixes for video-only, BUNDLE/MID, ICE credentials, and DTLS setup issues");
+                            insert_pos = idx + 1
+                            if not mid_present:
+                                sdp_lines.insert(insert_pos, 'a=mid:0')
+                                mids = ['0']
+                                logging.info("Inserted missing a=mid:0 after m=video")
+                                insert_pos += 1
+                            if not ice_present:
+                                sdp_lines.insert(insert_pos, f'a=ice-ufrag:{ice_ufrag}')
+                                sdp_lines.insert(insert_pos + 1, f'a=ice-pwd:{ice_pwd}')
+                                logging.info("Inserted missing ICE credentials after m=video")
+                                insert_pos += 2
+                            if not setup_present:
+                                sdp_lines.insert(insert_pos, 'a=setup:actpass')
+                                logging.info("Inserted missing DTLS setup line after m=video")
+                            rtcp_mux_present = False
+                            for offset in range(1, 10):
+                                if idx + offset < len(sdp_lines):
+                                    if sdp_lines[idx + offset].startswith('a=rtcp-mux'):
+                                        rtcp_mux_present = True
+                            if not rtcp_mux_present:
+                                sdp_lines.insert(insert_pos, 'a=rtcp-mux')
+                                logging.info("Inserted missing a=rtcp-mux after m=video")
+                                insert_pos += 1
+                            break
+                    if not video_section_found:
+                        sdp_lines.append('m=video 9 UDP/TLS/RTP/SAVPF 96')
+                        sdp_lines.append('c=IN IP4 0.0.0.0')
+                        sdp_lines.append('a=rtpmap:96 VP8/90000')
+                        sdp_lines.append('a=mid:0')
+                        sdp_lines.append(f'a=ice-ufrag:{ice_ufrag}')
+                        sdp_lines.append(f'a=ice-pwd:{ice_pwd}')
+                        sdp_lines.append('a=setup:actpass')
+                        sdp_lines.append('a=rtcp-mux')
+                        mids = ['0']
+                        logging.info("Added missing m=video section with a=mid:0, ICE credentials, DTLS setup, and a=rtcp-mux")
+                    fixed_sdp_lines = []
+                    for line in sdp_lines:
+                        if line.startswith('a=group:BUNDLE'):
+                            line = 'a=group:BUNDLE ' + (' '.join(mids) if mids else '0')
+                            logging.info(f"Fixed BUNDLE line: {line}")
+                        if line.startswith('a=setup:actpass'):
+                            line = 'a=setup:passive'
+                            logging.info("Replaced DTLS setup attribute with 'passive' for answer")
+                        fixed_sdp_lines.append(line)
+                    answer = RTCSessionDescription(sdp='\n'.join(fixed_sdp_lines), type=answer.type)
+                    logging.info("Applied robust SDP fixes for video-only, BUNDLE/MID, ICE credentials, and DTLS setup issues")
             
             # Fix transceiver directions before setting local description
             for transceiver in pc.getTransceivers():
@@ -1028,9 +1016,9 @@ document.addEventListener('visibilitychange', () => {
                         logging.info(f"Fixed transceiver directions: direction={transceiver._direction}, offerDirection={getattr(transceiver, '_offerDirection', 'None')}")
             
             logging.info("Setting local description...")
-            try {
+            try:
                 await pc.setLocalDescription(answer)
-            } catch (ValueError as ve) {
+            except ValueError as ve:
                 if "None is not in list" in str(ve):
                     logging.error("Encountered aiortc SDP direction bug, attempting workaround...")
                     from aiortc import rtcpeerconnection as rtc_module
@@ -1044,15 +1032,13 @@ document.addEventListener('visibilitychange', () => {
                         return original_and_direction(a, b)
 
                     rtc_module.and_direction = patched_and_direction
-                    try {
+                    try:
                         await pc.setLocalDescription(answer)
                         logging.info("Successfully set local description with workaround")
-                    } finally {
+                    finally:
                         rtc_module.and_direction = original_and_direction
-                    }
-                else {
+                else:
                     raise
-                }
             # Ensure localDescription is set before returning
             if pc.localDescription is None:
                 logging.warning("pc.localDescription is None, waiting 100ms...")
