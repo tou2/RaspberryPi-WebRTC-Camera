@@ -999,4 +999,41 @@ document.addEventListener('visibilitychange', () => {
                     fixed_sdp_lines = []
                     for line in sdp_lines:
                         if line.startswith('a=group:BUNDLE'):
-                            line = 'a=group:BUNDLE ' + (' '.join(mids) if mids
+                            line = 'a=group:BUNDLE ' + (' '.join(mids) if mids else '0')
+                            logging.info(f"Fixed BUNDLE line: {line}")
+                        if line.startswith('a=setup:actpass'):
+                            line = 'a=setup:actpass'
+                        fixed_sdp_lines.push(line)
+                    sdp_lines = fixed_sdp_lines
+                    logging.info("Patched SDP lines:")
+                    for i, line in enumerate(sdp_lines):
+                        logging.info(f"  {i}: {line}")
+                
+                # Set the modified SDP as the local description
+                await pc.setLocalDescription(answer)
+            
+            return web.json_response({
+                "sdp": pc.localDescription.sdp,
+                "type": pc.localDescription.type,
+            })
+        except Exception as e:
+            logging.error(f"Error handling offer: {e}")
+            return web.json_response({
+                "error": str(e)
+            }, status=500)
+    
+    async def _shutdown(self):
+        """Shutdown server gracefully."""
+        logging.info("Shutting down server...")
+        for pc in list(self.peer_connections):
+            try:
+                await pc.close()
+                logging.info(f"Closed peer connection: {pc}")
+            except Exception as e:
+                logging.error(f"Error closing peer connection {pc}: {e}")
+        logging.info("Server shutdown complete")
+        sys.exit(0)
+
+if __name__ == "__main__":
+    # Start the server
+    web.run_app(WebRTCServer().app, host='0.0.0.0', port=8080, access_log=None)
