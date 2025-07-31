@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 """
-Low-latency WebRTC video streaming server for Raspberry Pi Zero camera.
+Low-latency WebRTC video streaming server for Raspberry Pi camera.
 Optimized for minimal latency and efficient resource usage.
 """
 
 import asyncio
 import json
 import logging
-import os
 import subprocess
-import threading
 import time
-from typing import Dict, Set
+from typing import Set
 
 import cv2
 from aiohttp import web, web_runner
@@ -167,6 +165,7 @@ class WebRTCServer:
     def __init__(self):
         self.peer_connections: Set[RTCPeerConnection] = set()
         self.app = web.Application()
+        self.video_track = CameraVideoTrack()
         self._setup_routes()
         
     def _setup_routes(self):
@@ -293,7 +292,6 @@ class WebRTCServer:
         """Serve the JavaScript client."""
         js_content = """
 let pc = null;
-let localStream = null;
 
 const configuration = {
     iceServers: [
@@ -460,7 +458,8 @@ document.addEventListener('visibilitychange', () => {
             @pc.on("connectionstatechange")
             async def on_connectionstatechange():
                 logger.info(f"Connection state: {pc.connectionState}")
-                if pc.connectionState == "closed":
+                if pc.connectionState in ("failed", "closed", "disconnected"):
+                    await pc.close()
                     self.peer_connections.discard(pc)
             
             @pc.on("iceconnectionstatechange")
@@ -469,7 +468,7 @@ document.addEventListener('visibilitychange', () => {
             
             # Add video track
             logger.info("Adding video track.")
-            pc.addTrack(CameraVideoTrack())
+            pc.addTrack(self.video_track)
             
             # Set remote description
             logger.info("Setting remote description...")
@@ -520,6 +519,12 @@ document.addEventListener('visibilitychange', () => {
             # Clean up connections
             for pc in self.peer_connections.copy():
                 await pc.close()
+            self.peer_connections.clear()
+            
+            # Stop the camera track
+            if self.video_track:
+                self.video_track.stop()
+                
             await runner.cleanup()
 
 async def main():
