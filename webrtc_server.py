@@ -58,7 +58,9 @@ class CameraVideoTrack(VideoStreamTrack):
     def _setup_camera(self):
         """Initialize camera with optimal settings for low latency."""
         try:
-            self.cap = cv2.VideoCapture(CONFIG["camera_index"])
+            # Explicitly use the V4L2 backend for libcamera compatibility
+            logger.info("Using V4L2 backend for camera capture.")
+            self.cap = cv2.VideoCapture(CONFIG["camera_index"], cv2.CAP_V4L2)
             
             # Set camera properties for low latency
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, CONFIG["width"])
@@ -70,6 +72,13 @@ class CameraVideoTrack(VideoStreamTrack):
             if hasattr(cv2, 'CAP_PROP_FOURCC'):
                 # Use MJPG for better performance on Pi
                 self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
+
+            # Allow camera to warm up
+            logger.info("Allowing camera to warm up for 2 seconds...")
+            time.sleep(2)
+
+            if not self.cap.isOpened():
+                raise ConnectionError("Camera could not be opened.")
             
             logger.info(f"Camera initialized: {CONFIG['width']}x{CONFIG['height']} @ {CONFIG['fps']}fps")
             
