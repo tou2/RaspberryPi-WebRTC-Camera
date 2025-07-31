@@ -133,7 +133,7 @@ print_section "Service Configuration"
 
 # Create systemd service file
 print_status "Creating systemd service..."
-sudo tee /etc/systemd/system/webrtc-camera.service > /dev/null << EOF
+sudo tee /etc/systemd/system/webrtc_stream.service > /dev/null << EOF
 [Unit]
 Description=WebRTC Camera Stream
 After=network.target
@@ -143,7 +143,6 @@ Wants=network.target
 Type=simple
 User=$USER
 WorkingDirectory=$(pwd)
-Environment=PATH=$(pwd)/venv/bin
 ExecStart=$(pwd)/venv/bin/python webrtc_server.py
 Restart=always
 RestartSec=10
@@ -154,7 +153,7 @@ EOF
 
 print_status "Enabling systemd service..."
 sudo systemctl daemon-reload
-sudo systemctl enable webrtc-camera.service
+sudo systemctl enable webrtc_stream.service
 
 print_section "Performance Optimization"
 
@@ -203,7 +202,7 @@ chmod +x start_stream.sh
 # Create stop script
 cat > stop_stream.sh << 'EOF'
 #!/bin/bash
-sudo systemctl stop webrtc-camera.service
+sudo systemctl stop webrtc_stream.service
 EOF
 
 chmod +x stop_stream.sh
@@ -356,7 +355,7 @@ else
     echo "   ${GREEN}./start_stream.sh${NC}"
     echo ""
     echo "   Or start as a service:"
-    echo "   ${GREEN}sudo systemctl start webrtc-camera.service${NC}"
+    echo "   ${GREEN}sudo systemctl start webrtc_stream.service${NC}"
     echo ""
     echo "3. Open a web browser and navigate to:"
     echo "   ${GREEN}http://[PI_IP_ADDRESS]:8080${NC}"
@@ -368,8 +367,8 @@ echo ""
 echo "Useful commands:"
 echo "  - Start manually: ${GREEN}./start_stream.sh${NC}"
 echo "  - Stop service: ${GREEN}./stop_stream.sh${NC}"
-echo "  - Check service status: ${GREEN}sudo systemctl status webrtc-camera.service${NC}"
-echo "  - View logs: ${GREEN}sudo journalctl -u webrtc-camera.service -f${NC}"
+echo "  - Check service status: ${GREEN}sudo systemctl status webrtc_stream.service${NC}"
+echo "  - View logs: ${GREEN}sudo journalctl -u webrtc_stream.service -f${NC}"
 echo "  - Test camera: ${GREEN}./camera_test.sh${NC}"
 
 if [[ $install_docker =~ ^[Yy]$ ]]; then
