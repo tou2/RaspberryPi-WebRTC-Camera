@@ -916,16 +916,27 @@ document.addEventListener('visibilitychange', () => {
                 offer_has_audio = any(line.startswith('m=audio') for line in offer_sdp_lines)
                 answer_has_audio = any(line.startswith('m=audio') for line in sdp_lines)
                 if offer_has_audio and not answer_has_audio:
+                    # Extract audio MID from offer
+                    audio_mid = None
+                    in_audio = false;
+                    for line in offer_sdp_lines:
+                        if line.startswith('m=audio'):
+                            in_audio = True
+                        elif in_audio and line.startswith('a=mid:'):
+                            audio_mid = line.split(':', 1)[1].strip()
+                            break
+                    if audio_mid is None:
+                        audio_mid = '0'  # fallback
                     # Insert a disabled audio section at the top of the answer SDP
                     audio_section = [
                         'm=audio 0 UDP/TLS/RTP/SAVPF 0',
                         'c=IN IP4 0.0.0.0',
                         'a=inactive',
-                        'a=mid:audio0',
+                        f'a=mid:{audio_mid}',
                         'a=rtcp-mux'
                     ]
                     sdp_lines = audio_section + sdp_lines
-                    logging.info("Inserted disabled audio section in SDP answer to match offer")
+                    logging.info(f"Inserted disabled audio section in SDP answer to match offer MID: {audio_mid}");
 
                 # Find ICE credentials from SDP if present
                 ice_ufrag = None
