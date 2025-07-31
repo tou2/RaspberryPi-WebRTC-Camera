@@ -919,59 +919,46 @@ document.addEventListener('visibilitychange', () => {
                     # Remove all audio features: Only process video SDP
                     sdp_lines = [line for line in sdp_lines if not line.startswith('m=audio')]
                     sdp_lines = [line for line in sdp_lines if not (line.startswith('a=mid:') and 'audio' in line)]
-                    offer_video_mid = None;
-                    in_video = false;
-                    for (line of offer_sdp_lines) {
-                        if (line.startswith('m=video')) {
-                            in_video = true;
-                        } else if (in_video && line.startswith('a=mid:')) {
-                            offer_video_mid = line.split(':', 1)[1].trim();
-                            in_video = false;
-                        }
-                    }
-                    mids = [];
-                    if (offer_video_mid) {
-                        mids.push(offer_video_mid);
-                    }
-                    if (!mids.length) {
-                        mids = [line.split(':', 1)[1].trim() for line in sdp_lines if line.startswith('a=mid:')];
-                    }
-                    ice_ufrag = null;
-                    ice_pwd = null;
-                    for (line of sdp_lines) {
-                        if (line.startswith('a=ice-ufrag:')) {
-                            ice_ufrag = line.split(':', 1)[1].trim();
-                        }
-                        if (line.startswith('a=ice-pwd:')) {
-                            ice_pwd = line.split(':', 1)[1].trim();
-                        }
-                    }
-                    if (!ice_ufrag) {
-                        ice_ufrag = 'dummyufrag';
-                    }
-                    if (!ice_pwd) {
-                        ice_pwd = 'dummypwd1234567890';
-                    }
-                    video_section_found = false;
-                    for (idx, line of sdp_lines.entries()) {
-                        if (line.startswith('m=video')) {
-                            video_section_found = true;
-                            mid_present = false;
-                            ice_present = false;
-                            setup_present = false;
-                            for (offset of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
-                                if (idx + offset < sdp_lines.length) {
-                                    if (sdp_lines[idx + offset].startswith('a=mid:0')) {
-                                        mid_present = true;
-                                    }
-                                    if (sdp_lines[idx + offset].startswith('a=ice-ufrag:')) {
-                                        ice_present = true;
-                                    }
-                                    if (sdp_lines[idx + offset].startswith('a=setup:')) {
-                                        setup_present = true;
-                                    }
-                                }
-                            }
+                    offer_video_mid = None
+                    in_video = False
+                    for line in offer_sdp_lines:
+                        if line.startswith('m=video'):
+                            in_video = True
+                        elif in_video and line.startswith('a=mid:'):
+                            offer_video_mid = line.split(':', 1)[1].strip()
+                            in_video = False
+                    mids = []
+                    if offer_video_mid:
+                        mids.append(offer_video_mid)
+                    if not mids:
+                        mids = [line.split(':', 1)[1].strip() for line in sdp_lines if line.startswith('a=mid:')]
+                    ice_ufrag = None
+                    ice_pwd = None
+                    for line in sdp_lines:
+                        if line.startswith('a=ice-ufrag:'):
+                            ice_ufrag = line.split(':', 1)[1].strip()
+                        if line.startswith('a=ice-pwd:'):
+                            ice_pwd = line.split(':', 1)[1].strip()
+                    if not ice_ufrag:
+                        ice_ufrag = 'dummyufrag'
+                    if not ice_pwd:
+                        ice_pwd = 'dummypwd1234567890'
+                    video_section_found = False
+                    for idx in range(len(sdp_lines)):
+                        line = sdp_lines[idx]
+                        if line.startswith('m=video'):
+                            video_section_found = True
+                            mid_present = False
+                            ice_present = False
+                            setup_present = False
+                            for offset in range(1, 10):
+                                if idx + offset < len(sdp_lines):
+                                    if sdp_lines[idx + offset].startswith('a=mid:0'):
+                                        mid_present = True
+                                    if sdp_lines[idx + offset].startswith('a=ice-ufrag:'):
+                                        ice_present = True
+                                    if sdp_lines[idx + offset].startswith('a=setup:'):
+                                        setup_present = True
                             insert_pos = idx + 1;
                             if (!mid_present) {
                                 sdp_lines.insert(insert_pos, 'a=mid:0');
@@ -990,12 +977,11 @@ document.addEventListener('visibilitychange', () => {
                                 logging.info("Inserted missing DTLS setup line after m=video");
                             }
                             rtcp_mux_present = false;
-                            for (offset of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+                            for (offset = 1; offset < 10; offset++) {
                                 if (idx + offset < sdp_lines.length) {
                                     if (sdp_lines[idx + offset].startswith('a=rtcp-mux')) {
                                         rtcp_mux_present = true;
                                     }
-                                }
                             }
                             if (!rtcp_mux_present) {
                                 sdp_lines.insert(insert_pos, 'a=rtcp-mux');
@@ -1004,14 +990,13 @@ document.addEventListener('visibilitychange', () => {
                             }
                             break;
                         }
-                    }
                     if (!video_section_found) {
                         sdp_lines.push('m=video 9 UDP/TLS/RTP/SAVPF 96');
                         sdp_lines.push('c=IN IP4 0.0.0.0');
                         sdp_lines.push('a=rtpmap:96 VP8/90000');
                         sdp_lines.push('a=mid:0');
-                        sdp_lines.push(`a=ice-ufrag:${ice_ufrag}`);
-                        sdp_lines.push(`a=ice-pwd:${ice_pwd}`);
+                        sdp_lines.push(f'a=ice-ufrag:{ice_ufrag}');
+                        sdp_lines.push(f'a=ice-pwd:{ice_pwd}');
                         sdp_lines.push('a=setup:actpass');
                         sdp_lines.push('a=rtcp-mux');
                         mids = ['0'];
