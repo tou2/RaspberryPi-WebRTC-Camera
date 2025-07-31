@@ -317,8 +317,11 @@ async function start() {
             video.srcObject = event.streams[0];
         };
         
-        // Create offer
-        const offer = await pc.createOffer();
+        // Create offer for video only
+        const offer = await pc.createOffer({
+            offerToReceiveVideo: true,
+            offerToReceiveAudio: false
+        });
         await pc.setLocalDescription(offer);
         
         // Send offer to server
@@ -403,10 +406,9 @@ document.addEventListener('visibilitychange', () => {
             async def on_iceconnectionstatechange():
                 logger.info(f"ICE connection state: {pc.iceConnectionState}")
             
-            # Add video track and explicitly reject audio
-            logger.info("Adding video transceiver and rejecting audio.")
-            pc.addTransceiver(CameraVideoTrack(), direction="sendonly")
-            pc.addTransceiver("audio", direction="inactive")
+            # Add video track
+            logger.info("Adding video track.")
+            pc.addTrack(CameraVideoTrack())
             
             # Set remote description
             logger.info("Setting remote description...")
