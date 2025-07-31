@@ -14,8 +14,13 @@ from typing import Dict, Set
 
 import cv2
 from aiohttp import web, web_runner
-from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
-from aiortc.contrib.media import MediaPlayer
+from aiortc import (
+    RTCPeerConnection,
+    RTCSessionDescription,
+    VideoStreamTrack,
+    RTCConfiguration,
+    RTCIceServer,
+)
 from av import VideoFrame
 import numpy as np
 
@@ -376,15 +381,18 @@ document.addEventListener('visibilitychange', () => {
         try:
             params = await request.json()
             offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
-            
+
+            # Create RTCConfiguration
+            config = RTCConfiguration(
+                iceServers=[RTCIceServer(**server) for server in CONFIG["ice_servers"]]
+            )
+
             # Create new peer connection
-            pc = RTCPeerConnection(configuration={
-                "iceServers": CONFIG["ice_servers"]
-            })
-            
+            pc = RTCPeerConnection(configuration=config)
+
             # Add to tracking set
             self.peer_connections.add(pc)
-            
+
             @pc.on("connectionstatechange")
             async def on_connectionstatechange():
                 logger.info(f"Connection state: {pc.connectionState}")
@@ -400,19 +408,29 @@ document.addEventListener('visibilitychange', () => {
             pc.addTrack(video_track)
             
             # Set remote description and create answer
+            logger.info("Setting remote description...")
             await pc.setRemoteDescription(offer)
+
+            logger.info("Creating answer...")
             answer = await pc.createAnswer()
+
+            logger.info("Setting local description...")
             await pc.setLocalDescription(answer)
-            
-            return web.json_response({
-                "sdp": pc.localDescription.sdp,
-                "type": pc.localDescription.type
-            })
+
+            if pc.localDescription and pc.localDescription.sdp:
+                logger.info(f"Successfully generated answer SDP of length {len(pc.localDescription.sdp)}")
+                return web.json_response({
+                    "sdp": pc.localDescription.sdp,
+                    "type": pc.localDescription.type
+                })
+            else:
+                logger.error("Failed to generate valid local description.")
+                return web.json_response({"error": "Server failed to generate SDP answer"}, status=500)
             
         except Exception as e:
-            logger.error(f"Error handling offer: {e}")
+            logger.error(f"Error handling offer: {e}", exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
-    
+
     async def start_server(self):
         """Start the web server."""
         runner = web_runner.AppRunner(self.app)
