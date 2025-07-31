@@ -918,7 +918,7 @@ document.addEventListener('visibilitychange', () => {
                 if offer_has_audio and not answer_has_audio:
                     # Extract audio MID from offer
                     audio_mid = None
-                    in_audio = false;
+                    in_audio = False
                     for line in offer_sdp_lines:
                         if line.startswith('m=audio'):
                             in_audio = True
