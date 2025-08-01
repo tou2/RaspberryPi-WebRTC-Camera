@@ -185,6 +185,7 @@ INDEX_HTML = """
 
 CLIENT_JS = """
 let pc = null;
+let reconnectTimer = null;
 
 const configuration = {
     iceServers: [
@@ -229,6 +230,11 @@ async function start() {
     const resolutionSelect = document.getElementById('resolution');
     const fpsSelect = document.getElementById('fps');
     
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+    }
+    
     startBtn.disabled = true;
     resolutionSelect.disabled = true;
     fpsSelect.disabled = true;
@@ -242,9 +248,20 @@ async function start() {
             if (pc.connectionState === 'connected') {
                 updateStatus('Connected', 'connected');
                 setInterval(updateStats, 1000);
+                if (reconnectTimer) {
+                    clearTimeout(reconnectTimer);
+                    reconnectTimer = null;
+                }
             } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-                updateStatus('Disconnected', 'disconnected');
-                stop();
+                console.log('Connection failed or disconnected, attempting to reconnect...');
+                updateStatus('Connection lost, reconnecting...', 'connecting');
+                if (pc) {
+                    pc.close();
+                    pc = null;
+                }
+                if (!reconnectTimer) {
+                    reconnectTimer = setTimeout(start, 5000);
+                }
             }
         };
         
@@ -302,6 +319,11 @@ async function start() {
 }
 
 function stop() {
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+    }
+
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const statsDiv = document.getElementById('stats');
