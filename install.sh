@@ -77,12 +77,12 @@ print_section "Camera Configuration"
 print_status "Configuring camera module..."
 
 # For new cameras (Camera Module 3+), use camera_auto_detect
-if ! grep -q "camera_auto_detect=1" /boot/config.txt; then
-    echo "camera_auto_detect=1" | sudo tee -a /boot/config.txt
-    print_status "Camera auto-detect enabled (recommended for new cameras)"
-else
-    print_status "Camera auto-detect already enabled"
-fi
+# if ! grep -q "camera_auto_detect=1" /boot/config.txt; then
+#     echo "camera_auto_detect=1" | sudo tee -a /boot/config.txt
+#     print_status "Camera auto-detect enabled (recommended for new cameras)"
+# else
+#     print_status "Camera auto-detect already enabled"
+# fi
 
 print_section "Python Environment Setup"
 
@@ -144,9 +144,9 @@ print_section "Performance Optimization"
 print_status "Applying performance optimizations..."
 
 # Camera optimizations
-if ! grep -q "disable_camera_led=1" /boot/config.txt; then
-    echo "disable_camera_led=1" | sudo tee -a /boot/config.txt
-fi
+# if ! grep -q "disable_camera_led=1" /boot/config.txt; then
+#     echo "disable_camera_led=1" | sudo tee -a /boot/config.txt
+# fi
 
 # Network optimizations
 echo "net.core.rmem_max = 16777216" | sudo tee -a /etc/sysctl.conf
