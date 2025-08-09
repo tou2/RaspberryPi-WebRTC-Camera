@@ -84,23 +84,6 @@ else
     print_status "Camera auto-detect already enabled"
 fi
 
-# Legacy camera support
-if ! grep -q "start_x=1" /boot/config.txt; then
-    echo "start_x=1" | sudo tee -a /boot/config.txt
-    print_status "Legacy camera support enabled"
-else
-    print_status "Legacy camera support already enabled"
-fi
-
-# Set GPU memory split for camera
-if ! grep -q "gpu_mem=" /boot/config.txt; then
-    echo "gpu_mem=128" | sudo tee -a /boot/config.txt
-    print_status "GPU memory set to 128MB"
-elif ! grep -q "gpu_mem=128" /boot/config.txt; then
-    sudo sed -i 's/gpu_mem=.*/gpu_mem=128/' /boot/config.txt
-    print_status "GPU memory updated to 128MB"
-fi
-
 print_section "Python Environment Setup"
 
 # Create virtual environment
@@ -159,15 +142,6 @@ print_section "Performance Optimization"
 
 # Set up performance optimizations for Pi Zero
 print_status "Applying performance optimizations..."
-
-# GPU memory split optimization
-if ! grep -q "gpu_mem_256=128" /boot/config.txt; then
-    echo "gpu_mem_256=128" | sudo tee -a /boot/config.txt
-fi
-
-if ! grep -q "gpu_mem_512=128" /boot/config.txt; then
-    echo "gpu_mem_512=128" | sudo tee -a /boot/config.txt
-fi
 
 # Camera optimizations
 if ! grep -q "disable_camera_led=1" /boot/config.txt; then
