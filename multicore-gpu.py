@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Pi 5 Hardware-Optimized WebRTC Video Streaming Server
-Complete implementation with proper H.264 decoding
+Pi Camera WebRTC Streaming Server with MJPEG decoding
 """
 
 import asyncio
@@ -9,11 +8,10 @@ import logging
 import subprocess
 import time
 import threading
-import multiprocessing
 import queue
-import os
-from typing import Set, Optional
 import cv2
+import numpy as np
+from typing import Set, Optional
 from aiohttp import web, web_runner
 from aiortc import (
     RTCPeerConnection,
@@ -23,27 +21,23 @@ from aiortc import (
     RTCIceServer,
 )
 from av import VideoFrame
-import numpy as np
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Pi 5 optimized configuration for official camera
+# Configuration
 CONFIG = {
-    "camera_index": 0,
-    "width": 640,       # Reduced for better performance
-    "height": 480,      # Reduced for better performance
-    "fps": 30,          # Balanced FPS
-    "bitrate": 1000000, # 1Mbps for good quality/low latency
+    "width": 640,
+    "height": 480,
+    "fps": 30,
     "host": "0.0.0.0",
     "port": 8080,
     "ice_servers": [
         {"urls": "stun:stun.l.google.com:19302"},
         {"urls": "stun:stun1.l.google.com:19302"}
     ],
-    "queue_size": 2,    # Small buffer for low latency
-    "threads": max(1, multiprocessing.cpu_count() - 1),
+    "queue_size": 2,
 }
 
 # Global variables
@@ -53,43 +47,66 @@ camera_thread = None
 camera_running = False
 
 def camera_reader():
-    """Camera reader that captures raw RGB frames for direct use."""
+    """Camera reader that captures and decodes MJPEG frames."""
     global camera_process, camera_running, frame_queue
+    
+    buffer = b''
     
     while camera_running:
         try:
             if not camera_process or camera_process.poll() is not None:
                 setup_camera_process()
+                buffer = b''  # Reset buffer
                 time.sleep(0.1)
                 continue
                 
-            # Read raw RGB frame data
-            frame_size = CONFIG["width"] * CONFIG["height"] * 3
-            frame_data = camera_process.stdout.read(frame_size)
-            
-            if len(frame_data) == frame_size:
-                # Convert to numpy array
-                frame = np.frombuffer(frame_data, dtype=np.uint8)
-                frame = frame.reshape((CONFIG["height"], CONFIG["width"], 3))
+            # Read data from camera process
+            data = camera_process.stdout.read(4096)
+            if not data:
+                continue
                 
-                # Add to queue
+            buffer += data
+            
+            # Look for JPEG frames in the buffer
+            while True:
+                # Find start of JPEG
+                start_idx = buffer.find(b'\xff\xd8')
+                if start_idx == -1:
+                    break
+                    
+                # Find end of JPEG
+                end_idx = buffer.find(b'\xff\xd9', start_idx)
+                if end_idx == -1:
+                    break
+                    
+                # Extract JPEG frame
+                jpeg_data = buffer[start_idx:end_idx+2]
+                buffer = buffer[end_idx+2:]
+                
+                # Decode JPEG to numpy array
                 try:
-                    frame_queue.put(frame, block=False)
-                except queue.Full:
-                    try:
-                        frame_queue.get_nowait()
-                        frame_queue.put(frame, block=False)
-                    except:
-                        pass
-            else:
-                logger.warning("Incomplete frame received")
-                        
+                    nparr = np.frombuffer(jpeg_data, np.uint8)
+                    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                    
+                    if frame is not None:
+                        # Add to queue
+                        try:
+                            frame_queue.put(frame, block=False)
+                        except queue.Full:
+                            try:
+                                frame_queue.get_nowait()
+                                frame_queue.put(frame, block=False)
+                            except:
+                                pass
+                except Exception as e:
+                    logger.error(f"Frame decode error: {e}")
+                    
         except Exception as e:
             logger.error(f"Camera reader error: {e}")
             time.sleep(0.001)
 
 def setup_camera_process():
-    """Setup camera process with raw RGB output."""
+    """Setup camera process with MJPEG output."""
     global camera_process
     
     if camera_process:
@@ -101,7 +118,7 @@ def setup_camera_process():
         camera_process = None
     
     try:
-        # Use raw RGB output for direct processing (faster than H.264 decode)
+        # Use MJPEG codec which is supported
         rpicam_cmd = [
             "rpicam-vid",
             "-t", "0",              # Run forever
@@ -109,17 +126,13 @@ def setup_camera_process():
             "--width", str(CONFIG["width"]),
             "--height", str(CONFIG["height"]),
             "--framerate", str(CONFIG["fps"]),
-            "--bitrate", str(CONFIG["bitrate"]),
-            "--codec", "rgb",       # Raw RGB output (faster processing)
+            "--codec", "mjpeg",     # MJPEG output
+            "--quality", "85",      # JPEG quality
             "--flush",              # Flush buffers immediately
             "--save-pts", "0",      # No timestamp saving
             "--verbose", "0",       # No verbose output
             "--denoise", "cdn_off", # Disable denoise for speed
             "--awb", "auto",        # Auto white balance
-            "--sharpness", "0.5",   # Moderate sharpness
-            "--contrast", "1.0",    # Normal contrast
-            "--saturation", "1.0",  # Normal saturation
-            "--brightness", "0.0",  # Neutral brightness
             "-o", "-"               # Output to stdout
         ]
         
@@ -128,7 +141,7 @@ def setup_camera_process():
             rpicam_cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            bufsize=CONFIG["width"] * CONFIG["height"] * 3 * 2  # 2 frames buffer
+            bufsize=1024*1024  # 1MB buffer
         )
         
         # Wait for process to start
@@ -185,7 +198,7 @@ def stop_camera():
     
     logger.info("Camera capture stopped")
 
-class PiCameraVideoTrack(VideoStreamTrack):
+class CameraVideoTrack(VideoStreamTrack):
     """Video track that provides actual camera frames."""
     
     def __init__(self):
@@ -211,13 +224,8 @@ class PiCameraVideoTrack(VideoStreamTrack):
                 if self.rotation in rotation_map:
                     frame = cv2.rotate(frame, rotation_map[self.rotation])
             
-            # Convert BGR to RGB (camera outputs BGR)
+            # Convert BGR to RGB (OpenCV uses BGR)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
-            # Add frame counter for debugging
-            self.frame_counter += 1
-            # Uncomment next line to see frame counter on stream
-            # cv2.putText(frame, f"Frame: {self.frame_counter}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
             
             # Convert to VideoFrame
             av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
@@ -227,7 +235,7 @@ class PiCameraVideoTrack(VideoStreamTrack):
             return av_frame
             
         except queue.Empty:
-            # Return last known good frame or black frame
+            # Return black frame if no frame available
             black_frame = np.zeros((CONFIG["height"], CONFIG["width"], 3), dtype=np.uint8)
             av_frame = VideoFrame.from_ndarray(black_frame, format="rgb24")
             av_frame.pts = pts
@@ -254,7 +262,7 @@ class WebRTCServer:
     def __init__(self):
         self.peer_connections: Set[RTCPeerConnection] = set()
         self.app = web.Application()
-        self.video_track: Optional[PiCameraVideoTrack] = None
+        self.video_track: Optional[CameraVideoTrack] = None
         self._setup_routes()
         
     def _setup_routes(self):
@@ -297,7 +305,7 @@ class WebRTCServer:
             # Create or reuse the video track
             if self.video_track is None:
                 logger.info("Starting camera track")
-                self.video_track = PiCameraVideoTrack()
+                self.video_track = CameraVideoTrack()
                 start_camera()
             else:
                 logger.info("Reusing existing camera track.")
