@@ -106,6 +106,10 @@ aiohttp
 opencv-python
 numpy
 av
+
+# Optional performance enhancements
+uvloop
+psutil
 EOF
 
 # Install Python packages
@@ -126,7 +130,7 @@ Wants=network.target
 Type=simple
 User=$USER
 WorkingDirectory=$(pwd)
-ExecStart=$(pwd)/venv/bin/python webrtc_server.py
+ExecStart=$(pwd)/venv/bin/python enhanced_server.py
 Restart=always
 RestartSec=10
 
@@ -168,7 +172,7 @@ cat > start_stream.sh << 'EOF'
 #!/bin/bash
 cd "$(dirname "$0")"
 source venv/bin/activate
-python3 webrtc_server.py
+python3 enhanced_server.py
 EOF
 
 chmod +x start_stream.sh
@@ -285,7 +289,7 @@ COPY . .
 EXPOSE 8080
 
 # Run the server
-CMD ["python3", "webrtc_server.py"]
+CMD ["python3", "enhanced_server.py"]
 EOF
     fi
     
