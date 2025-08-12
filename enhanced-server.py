@@ -145,7 +145,6 @@ def setup_camera_process():
             "--flush",              # Immediate flush for low latency
             "--save-pts", "0",      # No timestamp saving
             "--verbose", "0",       # No verbose output
-            "--framed-interval", "0", # No frame interval delays
             "-o", "-"               # Output to stdout
         ]
         
