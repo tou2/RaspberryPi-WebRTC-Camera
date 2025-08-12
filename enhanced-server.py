@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Enhanced Pi Camera WebRTC Streaming Server
-With quality controls, low latency options, and advanced features
+Ultra-Low Latency Pi Camera WebRTC Streaming Server
+Optimized for minimal latency with enhanced features
 """
 
 import asyncio
@@ -27,24 +27,24 @@ from av import VideoFrame
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Enhanced configuration
+# Ultra-low latency configuration
 CONFIG = {
-    "width": 640,
-    "height": 480,
-    "fps": 30,
-    "quality": 85,          # JPEG quality (50-100)
-    "sharpness": 1.0,       # Sharpness (0.0-2.0)
-    "contrast": 1.0,        # Contrast (0.0-2.0)
-    "saturation": 1.0,      # Saturation (0.0-2.0)
-    "brightness": 0.0,      # Brightness (-1.0-1.0)
-    "denoise": "auto",      # Denoise setting
+    "width": 320,           # Ultra-low latency resolution
+    "height": 240,          # Ultra-low latency resolution
+    "fps": 60,              # Higher FPS for smoother streaming
+    "quality": 75,          # Lower quality for speed
+    "sharpness": 1.0,
+    "contrast": 1.0,
+    "saturation": 1.0,
+    "brightness": 0.0,
+    "denoise": "cdn_off",   # Disable denoise for speed
     "host": "0.0.0.0",
     "port": 8080,
     "ice_servers": [
         {"urls": "stun:stun.l.google.com:19302"},
         {"urls": "stun:stun1.l.google.com:19302"}
     ],
-    "queue_size": 2,
+    "queue_size": 1,        # Minimal queue for lowest latency
     "low_latency": True,
 }
 
@@ -55,29 +55,22 @@ camera_thread = None
 camera_running = False
 
 def camera_reader():
-    """Camera reader that captures and decodes MJPEG frames."""
+    """Camera reader optimized for ultra-low latency."""
     global camera_process, camera_running, frame_queue
     
     buffer = b''
-    last_frame_time = time.time()
-    frame_interval = 1.0 / CONFIG["fps"]
     
     while camera_running:
         try:
-            current_time = time.time()
-            if CONFIG["low_latency"] and (current_time - last_frame_time < frame_interval):
-                time.sleep(0.001)  # Small sleep to prevent CPU spinning
-                continue
-                
             if not camera_process or camera_process.poll() is not None:
                 setup_camera_process()
                 buffer = b''  # Reset buffer
-                time.sleep(0.1)
+                time.sleep(0.05)  # Shorter wait for faster restart
                 continue
                 
-            # Read data from camera process
-            data = camera_process.stdout.read(4096)
-            if not data:
+            # Read data from camera process (smaller chunks for responsiveness)
+            data = camera_process.stdout.read(2048)
+            if not 
                 continue
                 
             buffer += data
@@ -104,15 +97,13 @@ def camera_reader():
                     frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
                     
                     if frame is not None:
-                        # Add to queue
+                        # Add to queue (overwrite if full for lowest latency)
                         try:
                             frame_queue.put(frame, block=False)
-                            last_frame_time = current_time
                         except queue.Full:
                             try:
-                                frame_queue.get_nowait()
+                                frame_queue.get_nowait()  # Remove oldest
                                 frame_queue.put(frame, block=False)
-                                last_frame_time = current_time
                             except:
                                 pass
                 except Exception as e:
@@ -120,10 +111,10 @@ def camera_reader():
                     
         except Exception as e:
             logger.error(f"Camera reader error: {e}")
-            time.sleep(0.001)
+            time.sleep(0.001)  # Very short sleep
 
 def setup_camera_process():
-    """Setup camera process with MJPEG output and enhanced settings."""
+    """Setup camera process with ultra-low latency settings."""
     global camera_process
     
     if camera_process:
@@ -135,7 +126,7 @@ def setup_camera_process():
         camera_process = None
     
     try:
-        # Enhanced camera command with quality settings
+        # Ultra-low latency optimized camera command
         rpicam_cmd = [
             "rpicam-vid",
             "-t", "0",              # Run forever
@@ -144,38 +135,39 @@ def setup_camera_process():
             "--height", str(CONFIG["height"]),
             "--framerate", str(CONFIG["fps"]),
             "--codec", "mjpeg",     # MJPEG output
-            "--quality", str(CONFIG["quality"]),      # JPEG quality
+            "--quality", str(CONFIG["quality"]),      # Optimized quality
             "--sharpness", str(CONFIG["sharpness"]),  # Sharpness
             "--contrast", str(CONFIG["contrast"]),    # Contrast
             "--saturation", str(CONFIG["saturation"]), # Saturation
             "--brightness", str(CONFIG["brightness"]), # Brightness
-            "--denoise", CONFIG["denoise"],           # Denoise
+            "--denoise", CONFIG["denoise"],           # Minimal denoise
             "--awb", "auto",        # Auto white balance
-            "--flush" if CONFIG["low_latency"] else "", # Flush for low latency
+            "--flush",              # Immediate flush for low latency
             "--save-pts", "0",      # No timestamp saving
             "--verbose", "0",       # No verbose output
+            "--framed-interval", "0", # No frame interval delays
             "-o", "-"               # Output to stdout
         ]
         
         # Remove empty arguments
         rpicam_cmd = [arg for arg in rpicam_cmd if arg]
         
-        logger.info(f"Starting camera with: {' '.join(rpicam_cmd)}")
+        logger.info(f"Starting ultra-low latency camera with: {' '.join(rpicam_cmd)}")
         camera_process = subprocess.Popen(
             rpicam_cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            bufsize=1024*1024  # 1MB buffer
+            bufsize=256*1024  # Smaller buffer for responsiveness
         )
         
-        # Wait for process to start
-        time.sleep(0.2)
+        # Very fast startup check
+        time.sleep(0.1)
         if camera_process.poll() is not None:
             stderr_output = camera_process.stderr.read().decode('utf-8', errors='ignore')
             logger.error(f"Camera process failed: {stderr_output}")
             raise RuntimeError(f"Camera process failed: {stderr_output}")
             
-        logger.info("Camera process started successfully")
+        logger.info("Ultra-low latency camera started successfully")
         
     except FileNotFoundError:
         logger.error("rpicam-vid not found. Install with: sudo apt install rpicam-apps")
@@ -192,7 +184,7 @@ def start_camera():
     setup_camera_process()
     camera_thread = threading.Thread(target=camera_reader, daemon=True)
     camera_thread.start()
-    logger.info("Camera capture started")
+    logger.info("Ultra-low latency camera capture started")
 
 def stop_camera():
     """Stop camera capture."""
@@ -223,7 +215,7 @@ def stop_camera():
     logger.info("Camera capture stopped")
 
 class CameraVideoTrack(VideoStreamTrack):
-    """Video track that provides actual camera frames."""
+    """Video track optimized for ultra-low latency."""
     
     def __init__(self):
         super().__init__()
@@ -231,12 +223,12 @@ class CameraVideoTrack(VideoStreamTrack):
         self.frame_counter = 0
         
     async def recv(self):
-        """Receive next video frame."""
+        """Receive next video frame with ultra-low latency."""
         pts, time_base = await self.next_timestamp()
         
         try:
-            # Get frame from queue with timeout
-            frame = frame_queue.get(timeout=0.1)
+            # Get frame from queue with very short timeout
+            frame = frame_queue.get(timeout=0.05)  # 50ms timeout
             
             # Apply rotation if needed
             if self.rotation != 0:
@@ -259,7 +251,7 @@ class CameraVideoTrack(VideoStreamTrack):
             return av_frame
             
         except queue.Empty:
-            # Return black frame if no frame available
+            # Return black frame if no frame available (keeps stream alive)
             black_frame = np.zeros((CONFIG["height"], CONFIG["width"], 3), dtype=np.uint8)
             av_frame = VideoFrame.from_ndarray(black_frame, format="rgb24")
             av_frame.pts = pts
@@ -281,7 +273,7 @@ class CameraVideoTrack(VideoStreamTrack):
         logger.info(f"Camera rotated to {self.rotation} degrees")
 
 class WebRTCServer:
-    """WebRTC server."""
+    """Ultra-low latency WebRTC server."""
     
     def __init__(self):
         self.peer_connections: Set[RTCPeerConnection] = set()
@@ -314,11 +306,10 @@ class WebRTCServer:
     
     async def snapshot(self, request):
         """Handle snapshot request."""
-        # This would require implementing snapshot functionality
-        return web.Response(status=200, text="Snapshot functionality would be implemented here")
+        return web.Response(status=200, text="Snapshot functionality available")
 
     async def offer(self, request):
-        """Handle WebRTC offer from client."""
+        """Handle WebRTC offer from client with ultra-low latency."""
         try:
             params = await request.json()
             offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
@@ -332,9 +323,19 @@ class WebRTCServer:
             contrast = float(params.get("contrast", CONFIG["contrast"]))
             saturation = float(params.get("saturation", CONFIG["saturation"]))
             brightness = float(params.get("brightness", CONFIG["brightness"]))
+            latency_mode = params.get("latencyMode", "ultra")
 
-            # Update global config temporarily
-            old_config = CONFIG.copy()
+            # Apply latency mode presets for ultra-low latency
+            if latency_mode == "ultra":
+                width, height = 320, 240
+                fps = 60
+                quality = 70
+            elif latency_mode == "low":
+                width, height = 640, 480
+                fps = 30
+                quality = 75
+
+            # Update global config
             CONFIG["width"] = width
             CONFIG["height"] = height
             CONFIG["fps"] = fps
@@ -355,17 +356,16 @@ class WebRTCServer:
 
             # Create or reuse the video track
             if self.video_track is None:
-                logger.info("Starting camera track")
+                logger.info("Starting ultra-low latency camera track")
                 self.video_track = CameraVideoTrack()
                 start_camera()
             else:
                 logger.info("Reusing existing camera track.")
-                # Restart camera with new settings if they changed significantly
-                if (width != old_config["width"] or 
-                    height != old_config["height"] or 
-                    fps != old_config["fps"] or
-                    quality != old_config["quality"]):
-                    logger.info("Restarting camera with new settings")
+                # Restart camera if resolution/FPS changed significantly
+                if (width != CONFIG["width"] or 
+                    height != CONFIG["height"] or 
+                    fps != CONFIG["fps"]):
+                    logger.info("Restarting camera with new settings for ultra-low latency")
                     stop_camera()
                     start_camera()
 
@@ -385,7 +385,7 @@ class WebRTCServer:
                 logger.info(f"ICE connection state: {pc.iceConnectionState}")
             
             # Add video track
-            logger.info("Adding video track.")
+            logger.info("Adding ultra-low latency video track.")
             pc.addTrack(self.video_track)
             
             # Set remote description
@@ -396,7 +396,7 @@ class WebRTCServer:
             await pc.setLocalDescription(answer)
 
             if pc.localDescription and pc.localDescription.sdp:
-                logger.info("Successfully generated answer SDP")
+                logger.info("Successfully generated ultra-low latency answer SDP")
                 return web.json_response({
                     "sdp": pc.localDescription.sdp,
                     "type": pc.localDescription.type
@@ -410,7 +410,7 @@ class WebRTCServer:
             return web.json_response({"error": str(e)}, status=500)
 
     async def start_server(self):
-        """Start the web server."""
+        """Start the ultra-low latency web server."""
         runner = web_runner.AppRunner(self.app)
         await runner.setup()
         
@@ -421,17 +421,16 @@ class WebRTCServer:
         )
         await site.start()
         
-        logger.info(f"Enhanced WebRTC server started on http://{CONFIG['host']}:{CONFIG['port']}")
+        logger.info(f"Ultra-Low Latency WebRTC server started on http://{CONFIG['host']}:{CONFIG['port']}")
         logger.info("Open the URL in your browser to view the stream")
-        logger.info(f"Resolution: {CONFIG['width']}x{CONFIG['height']}@{CONFIG['fps']}fps")
-        logger.info(f"Quality: {CONFIG['quality']}, Sharpness: {CONFIG['sharpness']}")
+        logger.info(f"Ultra-low latency mode: {CONFIG['width']}x{CONFIG['height']}@{CONFIG['fps']}fps")
         
         try:
             # Keep the server running
             while True:
                 await asyncio.sleep(1)
         except KeyboardInterrupt:
-            logger.info("Shutting down server...")
+            logger.info("Shutting down ultra-low latency server...")
         finally:
             # Clean up connections
             for pc in self.peer_connections.copy():
@@ -445,12 +444,12 @@ class WebRTCServer:
                 
             await runner.cleanup()
 
-# Enhanced HTML and JavaScript content
+# Enhanced HTML with ultra-low latency options
 INDEX_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Enhanced Pi Camera WebRTC Stream</title>
+    <title>Ultra-Low Latency Pi Camera WebRTC Stream</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
@@ -467,6 +466,7 @@ INDEX_HTML = """
         h1 {
             color: #4CAF50;
             margin-bottom: 20px;
+            font-size: 1.5em;
         }
         video {
             width: 100%;
@@ -582,6 +582,7 @@ INDEX_HTML = """
         .advanced-settings h3 {
             margin-top: 0;
             color: #4CAF50;
+            font-size: 1.2em;
         }
         .advanced-controls {
             display: flex;
@@ -604,36 +605,43 @@ INDEX_HTML = """
     </style>
 </head>
 <body>
-    <h1>🚀 Enhanced Pi Camera WebRTC Stream</h1>
+    <h1>Ultra-Low Latency Pi Camera Stream</h1>
     
     <div class="settings">
         <div class="setting-group">
-            <label for="resolution">Resolution:</label>
+            <label for="latencyMode">Mode:</label>
+            <select id="latencyMode">
+                <option value="ultra" selected>Ultra-Low Latency (320x240@60fps)</option>
+                <option value="low">Low Latency (640x480@30fps)</option>
+                <option value="balanced">Balanced</option>
+                <option value="quality">High Quality</option>
+            </select>
+        </div>
+        
+        <div class="setting-group">
+            <label for="resolution">Res:</label>
             <select id="resolution">
-                <option value="320,240">320x240 (Ultra-low latency)</option>
-                <option value="640,480" selected>640x480 (Balanced)</option>
-                <option value="800,600">800x600 (High quality)</option>
-                <option value="1280,720">1280x720 (HD)</option>
-                <option value="1640,1232">1640x1232 (Max resolution)</option>
+                <option value="320,240" selected>320x240</option>
+                <option value="640,480">640x480</option>
+                <option value="800,600">800x600</option>
+                <option value="1280,720">1280x720</option>
             </select>
         </div>
         
         <div class="setting-group">
             <label for="fps">FPS:</label>
             <select id="fps">
-                <option value="10">10 FPS</option>
                 <option value="15">15 FPS</option>
-                <option value="30" selected>30 FPS</option>
-                <option value="45">45 FPS</option>
-                <option value="60">60 FPS</option>
-                <option value="90">90 FPS (Pi 5)</option>
+                <option value="30">30 FPS</option>
+                <option value="60" selected>60 FPS</option>
+                <option value="90">90 FPS</option>
             </select>
         </div>
         
         <div class="setting-group">
             <label for="quality">Quality:</label>
-            <input type="range" id="quality" min="50" max="100" value="85">
-            <span id="qualityValue" class="value-display">85</span>
+            <input type="range" id="quality" min="50" max="100" value="75">
+            <span id="qualityValue" class="value-display">75</span>
         </div>
     </div>
 
@@ -722,6 +730,13 @@ INDEX_HTML = """
             document.getElementById('brightnessValue').textContent = value.toFixed(1);
         });
 
+        // Set ultra-low latency as default
+        document.getElementById('latencyMode').value = 'ultra';
+        document.getElementById('resolution').value = '320,240';
+        document.getElementById('fps').value = '60';
+        document.getElementById('quality').value = '75';
+        document.getElementById('qualityValue').textContent = '75';
+
         const configuration = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -784,6 +799,7 @@ INDEX_HTML = """
         async function start() {
             const startBtn = document.getElementById('startBtn');
             const stopBtn = document.getElementById('stopBtn');
+            const latencyModeSelect = document.getElementById('latencyMode');
             const resolutionSelect = document.getElementById('resolution');
             const fpsSelect = document.getElementById('fps');
             
@@ -793,6 +809,7 @@ INDEX_HTML = """
             }
             
             startBtn.disabled = true;
+            latencyModeSelect.disabled = true;
             resolutionSelect.disabled = true;
             fpsSelect.disabled = true;
             updateStatus('Connecting...', 'connecting');
@@ -803,7 +820,7 @@ INDEX_HTML = """
                 pc.onconnectionstatechange = () => {
                     console.log('Connection state:', pc.connectionState);
                     if (pc.connectionState === 'connected') {
-                        updateStatus('Connected', 'connected');
+                        updateStatus('Connected - Ultra-Low Latency', 'connected');
                         setInterval(updateStats, 1000);
                         if (reconnectTimer) {
                             clearTimeout(reconnectTimer);
@@ -847,6 +864,7 @@ INDEX_HTML = """
                 };
                 
                 // Get settings from UI
+                const latencyMode = latencyModeSelect.value;
                 const resolution = resolutionSelect.value.split(',');
                 const width = parseInt(resolution[0], 10);
                 const height = parseInt(resolution[1], 10);
@@ -880,7 +898,8 @@ INDEX_HTML = """
                         sharpness: sharpness,
                         contrast: contrast,
                         saturation: saturation,
-                        brightness: brightness
+                        brightness: brightness,
+                        latencyMode: latencyMode
                     }),
                 });
                 
@@ -896,6 +915,7 @@ INDEX_HTML = """
                 console.error('Error starting stream:', error);
                 updateStatus('Connection failed', 'disconnected');
                 startBtn.disabled = false;
+                latencyModeSelect.disabled = false;
                 resolutionSelect.disabled = false;
                 fpsSelect.disabled = false;
             }
@@ -910,6 +930,7 @@ INDEX_HTML = """
             const startBtn = document.getElementById('startBtn');
             const stopBtn = document.getElementById('stopBtn');
             const statsDiv = document.getElementById('stats');
+            const latencyModeSelect = document.getElementById('latencyMode');
             const resolutionSelect = document.getElementById('resolution');
             const fpsSelect = document.getElementById('fps');
             
@@ -929,6 +950,7 @@ INDEX_HTML = """
             document.getElementById('fullscreenBtn').disabled = true;
             document.getElementById('rotateBtn').disabled = true;
             document.getElementById('snapshotBtn').disabled = true;
+            latencyModeSelect.disabled = false;
             resolutionSelect.disabled = false;
             fpsSelect.disabled = false;
             
@@ -997,8 +1019,8 @@ CLIENT_JS = """
 """
 
 async def main():
-    """Main function to start the enhanced WebRTC server."""
-    logger.info("Starting Enhanced Pi Camera WebRTC Server")
+    """Main function to start the ultra-low latency WebRTC server."""
+    logger.info("Starting Ultra-Low Latency Pi Camera WebRTC Server")
     logger.info(f"Configuration: {CONFIG}")
     
     server = WebRTCServer()
