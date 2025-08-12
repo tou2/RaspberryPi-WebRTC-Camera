@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Ultra-Low Latency Pi Camera WebRTC Streaming Server with H.264
-Optimized for minimal latency using hardware H.264 encoding
+Ultra-Low Latency Pi Camera WebRTC Streaming Server
+Using RGB codec for direct frame processing
 """
 
 import asyncio
@@ -27,87 +27,65 @@ from av import VideoFrame
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Ultra-low latency configuration with H.264
+# Configuration
 CONFIG = {
-    "width": 640,           # Resolution
-    "height": 480,          # Resolution
-    "fps": 30,              # Frame rate
-    "bitrate": 1000000,     # 1 Mbps bitrate
-    "profile": "baseline",  # H.264 baseline profile for compatibility
-    "level": "4.0",         # H.264 level
+    "width": 640,
+    "height": 480,
+    "fps": 30,
+    "bitrate": 1000000,
     "host": "0.0.0.0",
     "port": 8080,
     "ice_servers": [
         {"urls": "stun:stun.l.google.com:19302"},
         {"urls": "stun:stun1.l.google.com:19302"}
     ],
-    "queue_size": 2,        # Small queue for low latency
-    "low_latency": True,
+    "queue_size": 2,
 }
 
 # Global variables
-nal_queue = queue.Queue(maxsize=CONFIG["queue_size"])
+frame_queue = queue.Queue(maxsize=CONFIG["queue_size"])
 camera_process = None
 camera_thread = None
 camera_running = False
 
 def camera_reader():
-    """Camera reader optimized for H.264 streaming."""
-    global camera_process, camera_running, nal_queue
-    
-    buffer = b''
-    start_code = b'\x00\x00\x00\x01'
+    """Camera reader that captures raw RGB frames."""
+    global camera_process, camera_running, frame_queue
     
     while camera_running:
         try:
             if not camera_process or camera_process.poll() is not None:
                 setup_camera_process()
-                buffer = b''  # Reset buffer
-                time.sleep(0.05)  # Shorter wait for faster restart
+                time.sleep(0.1)
                 continue
                 
-            # Read data from camera process
-            data = camera_process.stdout.read(4096)
-            if not 
-                continue
-                
-            buffer += data
+            # Read raw RGB frame data
+            frame_size = CONFIG["width"] * CONFIG["height"] * 3
+            frame_data = camera_process.stdout.read(frame_size)
             
-            # Look for H.264 NAL units in the buffer
-            while True:
-                # Find start of NAL unit
-                start_idx = buffer.find(start_code)
-                if start_idx == -1:
-                    break
-                    
-                # Find end of NAL unit (next start code or end of buffer)
-                next_start = buffer.find(start_code, start_idx + 4)
-                if next_start == -1:
-                    # Need more data to find complete NAL unit
-                    if len(buffer) - start_idx > 100000:  # Prevent buffer overflow
-                        buffer = buffer[start_idx:]  # Keep only from start
-                    break
-                    
-                # Extract complete NAL unit
-                nal_unit = buffer[start_idx:next_start]
-                buffer = buffer[next_start:]
+            if len(frame_data) == frame_size:
+                # Convert to numpy array
+                frame = np.frombuffer(frame_data, dtype=np.uint8)
+                frame = frame.reshape((CONFIG["height"], CONFIG["width"], 3))
                 
-                # Add to queue (overwrite if full for lowest latency)
+                # Add to queue
                 try:
-                    nal_queue.put(nal_unit, block=False)
+                    frame_queue.put(frame, block=False)
                 except queue.Full:
                     try:
-                        nal_queue.get_nowait()  # Remove oldest
-                        nal_queue.put(nal_unit, block=False)
+                        frame_queue.get_nowait()
+                        frame_queue.put(frame, block=False)
                     except:
                         pass
-                    
+            else:
+                logger.warning("Incomplete frame received")
+                        
         except Exception as e:
             logger.error(f"Camera reader error: {e}")
-            time.sleep(0.001)  # Very short sleep
+            time.sleep(0.001)
 
 def setup_camera_process():
-    """Setup camera process with H.264 encoding."""
+    """Setup camera process with RGB output."""
     global camera_process
     
     if camera_process:
@@ -119,7 +97,7 @@ def setup_camera_process():
         camera_process = None
     
     try:
-        # H.264 optimized camera command
+        # Use RGB codec for direct processing
         rpicam_cmd = [
             "rpicam-vid",
             "-t", "0",              # Run forever
@@ -127,36 +105,32 @@ def setup_camera_process():
             "--width", str(CONFIG["width"]),
             "--height", str(CONFIG["height"]),
             "--framerate", str(CONFIG["fps"]),
-            "--bitrate", str(CONFIG["bitrate"]),  # Hardware encoder bitrate
-            "--profile", CONFIG["profile"],       # H.264 profile
-            "--level", CONFIG["level"],           # H.264 level
-            "--intra", str(CONFIG["fps"]),        # Keyframe every second
-            "--codec", "h264",                   # H.264 encoding
-            "--flush",                          # Immediate flush for low latency
-            "--inline",                         # Inline headers
-            "--save-pts", "0",                  # No timestamp saving
-            "--verbose", "0",                   # No verbose output
-            "--denoise", "cdn_off",             # Disable denoise for speed
-            "--awb", "auto",                    # Auto white balance
-            "-o", "-"                           # Output to stdout
+            "--bitrate", str(CONFIG["bitrate"]),
+            "--codec", "rgb",       # Raw RGB output
+            "--flush",              # Flush buffers immediately
+            "--save-pts", "0",      # No timestamp saving
+            "--verbose", "0",       # No verbose output
+            "--denoise", "cdn_off", # Disable denoise for speed
+            "--awb", "auto",        # Auto white balance
+            "-o", "-"               # Output to stdout
         ]
         
-        logger.info(f"Starting H.264 camera with: {' '.join(rpicam_cmd)}")
+        logger.info(f"Starting camera with: {' '.join(rpicam_cmd)}")
         camera_process = subprocess.Popen(
             rpicam_cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            bufsize=512*1024  # Buffer for H.264 streaming
+            bufsize=CONFIG["width"] * CONFIG["height"] * 3 * 2
         )
         
-        # Fast startup check
-        time.sleep(0.1)
+        # Wait for process to start
+        time.sleep(0.2)
         if camera_process.poll() is not None:
             stderr_output = camera_process.stderr.read().decode('utf-8', errors='ignore')
             logger.error(f"Camera process failed: {stderr_output}")
             raise RuntimeError(f"Camera process failed: {stderr_output}")
             
-        logger.info("H.264 camera started successfully")
+        logger.info("Camera process started successfully")
         
     except FileNotFoundError:
         logger.error("rpicam-vid not found. Install with: sudo apt install rpicam-apps")
@@ -173,7 +147,7 @@ def start_camera():
     setup_camera_process()
     camera_thread = threading.Thread(target=camera_reader, daemon=True)
     camera_thread.start()
-    logger.info("H.264 camera capture started")
+    logger.info("Camera capture started")
 
 def stop_camera():
     """Stop camera capture."""
@@ -195,44 +169,29 @@ def stop_camera():
         camera_thread.join(timeout=1)
     
     # Clear queue
-    while not nal_queue.empty():
+    while not frame_queue.empty():
         try:
-            nal_queue.get_nowait()
+            frame_queue.get_nowait()
         except:
             break
     
     logger.info("Camera capture stopped")
 
-class H264VideoTrack(VideoStreamTrack):
-    """Video track for H.264 streaming."""
+class CameraVideoTrack(VideoStreamTrack):
+    """Video track that provides actual camera frames."""
     
     def __init__(self):
         super().__init__()
         self.rotation = 0
         self.frame_counter = 0
-        # Create a placeholder frame since we're not decoding H.264 in this example
-        self.placeholder_frame = np.zeros((CONFIG["height"], CONFIG["width"], 3), dtype=np.uint8)
-        cv2.rectangle(self.placeholder_frame, (50, 50), (CONFIG["width"]-50, CONFIG["height"]-50), (0, 255, 0), 2)
-        cv2.putText(self.placeholder_frame, "H.264 Stream Active", 
-                   (CONFIG["width"]//2-120, CONFIG["height"]//2), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         
     async def recv(self):
         """Receive next video frame."""
         pts, time_base = await self.next_timestamp()
         
         try:
-            # Get NAL unit from queue with timeout
-            nal_unit = nal_queue.get(timeout=0.1)
-            
-            # In a full implementation, you would decode the H.264 NAL unit here
-            # For this example, we'll use a placeholder frame
-            frame = self.placeholder_frame.copy()
-            
-            # Add frame counter
-            self.frame_counter += 1
-            cv2.putText(frame, f"Frame: {self.frame_counter}", 
-                       (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            # Get frame from queue with timeout
+            frame = frame_queue.get(timeout=0.1)
             
             # Apply rotation if needed
             if self.rotation != 0:
@@ -244,6 +203,9 @@ class H264VideoTrack(VideoStreamTrack):
                 if self.rotation in rotation_map:
                     frame = cv2.rotate(frame, rotation_map[self.rotation])
             
+            # Convert BGR to RGB (camera outputs BGR)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
             # Convert to VideoFrame
             av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
             av_frame.pts = pts
@@ -252,12 +214,9 @@ class H264VideoTrack(VideoStreamTrack):
             return av_frame
             
         except queue.Empty:
-            # Return placeholder frame if no NAL unit available
-            frame = self.placeholder_frame.copy()
-            cv2.putText(frame, f"Frame: {self.frame_counter} (Buffering)", 
-                       (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-            
-            av_frame = VideoFrame.from_ndarray(frame, format="rgb24")
+            # Return black frame
+            black_frame = np.zeros((CONFIG["height"], CONFIG["width"], 3), dtype=np.uint8)
+            av_frame = VideoFrame.from_ndarray(black_frame, format="rgb24")
             av_frame.pts = pts
             av_frame.time_base = time_base
             return av_frame
@@ -277,12 +236,12 @@ class H264VideoTrack(VideoStreamTrack):
         logger.info(f"Camera rotated to {self.rotation} degrees")
 
 class WebRTCServer:
-    """WebRTC server with H.264 support."""
+    """WebRTC server."""
     
     def __init__(self):
         self.peer_connections: Set[RTCPeerConnection] = set()
         self.app = web.Application()
-        self.video_track: Optional[H264VideoTrack] = None
+        self.video_track: Optional[CameraVideoTrack] = None
         self._setup_routes()
         
     def _setup_routes(self):
@@ -336,8 +295,8 @@ class WebRTCServer:
 
             # Create or reuse the video track
             if self.video_track is None:
-                logger.info("Starting H.264 camera track")
-                self.video_track = H264VideoTrack()
+                logger.info("Starting camera track")
+                self.video_track = CameraVideoTrack()
                 start_camera()
             else:
                 logger.info("Reusing existing camera track.")
@@ -365,7 +324,7 @@ class WebRTCServer:
                 logger.info(f"ICE connection state: {pc.iceConnectionState}")
             
             # Add video track
-            logger.info("Adding H.264 video track.")
+            logger.info("Adding video track.")
             pc.addTrack(self.video_track)
             
             # Set remote description
@@ -376,7 +335,7 @@ class WebRTCServer:
             await pc.setLocalDescription(answer)
 
             if pc.localDescription and pc.localDescription.sdp:
-                logger.info("Successfully generated H.264 answer SDP")
+                logger.info("Successfully generated answer SDP")
                 return web.json_response({
                     "sdp": pc.localDescription.sdp,
                     "type": pc.localDescription.type
@@ -401,16 +360,16 @@ class WebRTCServer:
         )
         await site.start()
         
-        logger.info(f"H.264 WebRTC server started on http://{CONFIG['host']}:{CONFIG['port']}")
+        logger.info(f"WebRTC server started on http://{CONFIG['host']}:{CONFIG['port']}")
         logger.info("Open the URL in your browser to view the stream")
-        logger.info(f"H.264 mode: {CONFIG['width']}x{CONFIG['height']}@{CONFIG['fps']}fps")
+        logger.info(f"Resolution: {CONFIG['width']}x{CONFIG['height']}@{CONFIG['fps']}fps")
         
         try:
             # Keep the server running
             while True:
                 await asyncio.sleep(1)
         except KeyboardInterrupt:
-            logger.info("Shutting down H.264 server...")
+            logger.info("Shutting down server...")
         finally:
             # Clean up connections
             for pc in self.peer_connections.copy():
@@ -424,12 +383,12 @@ class WebRTCServer:
                 
             await runner.cleanup()
 
-# HTML with H.264 options
+# HTML content
 INDEX_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>H.264 Pi Camera WebRTC Stream</title>
+    <title>Pi Camera WebRTC Stream</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
@@ -559,7 +518,7 @@ INDEX_HTML = """
     </style>
 </head>
 <body>
-    <h1>H.264 Pi Camera Stream</h1>
+    <h1>Pi Camera Stream</h1>
     
     <div class="settings">
         <div class="setting-group">
@@ -567,7 +526,6 @@ INDEX_HTML = """
             <select id="resolution">
                 <option value="640,480" selected>640x480</option>
                 <option value="1280,720">1280x720</option>
-                <option value="1920,1080">1920x1080</option>
             </select>
         </div>
         
@@ -582,7 +540,7 @@ INDEX_HTML = """
         
         <div class="setting-group">
             <label for="bitrate">Bitrate:</label>
-            <input type="range" id="bitrate" min="500000" max="5000000" value="1000000" step="100000">
+            <input type="range" id="bitrate" min="500000" max="3000000" value="1000000" step="100000">
             <span id="bitrateValue" class="value-display">1.0M</span>
         </div>
     </div>
@@ -684,7 +642,7 @@ INDEX_HTML = """
                 pc.onconnectionstatechange = () => {
                     console.log('Connection state:', pc.connectionState);
                     if (pc.connectionState === 'connected') {
-                        updateStatus('Connected - H.264 Stream', 'connected');
+                        updateStatus('Connected', 'connected');
                         setInterval(updateStats, 1000);
                         if (reconnectTimer) {
                             clearTimeout(reconnectTimer);
@@ -838,8 +796,8 @@ CLIENT_JS = """
 """
 
 async def main():
-    """Main function to start the H.264 WebRTC server."""
-    logger.info("Starting H.264 Pi Camera WebRTC Server")
+    """Main function to start the WebRTC server."""
+    logger.info("Starting Pi Camera WebRTC Server")
     logger.info(f"Configuration: {CONFIG}")
     
     server = WebRTCServer()
