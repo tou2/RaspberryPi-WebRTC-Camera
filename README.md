@@ -6,9 +6,9 @@ A simple, low-latency WebRTC video streaming server for Raspberry Pi, optimized 
 
 -   **Low Latency**: Streams video directly to your web browser with minimal delay.
 -   **Raspberry Pi Optimized**: Specifically designed to work with `rpicam-vid` for efficient, hardware-accelerated video capture on modern Raspberry Pi boards (Bullseye OS or newer).
--   **Configurable**: Settings can be adjusted in `config.ini` (camera resolution, FPS, network ports).
--   **Web-Based UI**: A clean web interface allows you to start, stop, and control the stream.
--   **Simple & Self-Contained**: Everything is in a single Python script (`enhanced_server.py`) using `aiohttp` and `aiortc`. No complex dependencies.
+-   **Configurable**: Key settings like resolution, FPS, and quality can be adjusted directly within the `enhanced_server.py` script.
+-   **Web-Based UI**: A clean web interface allows you to start, stop, and control the stream, including camera rotation.
+-   **Simple & Self-Contained**: Everything is in a single Python script (`enhanced_server.py`) using `aiohttp` and `aiortc`.
 
 ## Requirements
 
@@ -29,24 +29,29 @@ A simple, low-latency WebRTC video streaming server for Raspberry Pi, optimized 
     ```
 
 2.  **Run the installer:**
-    This script will install Python dependencies, create a default `config.ini`, and set up a systemd service.
+    This script will install Python dependencies and set up a systemd service to run the server automatically.
     ```bash
     chmod +x install.sh
     ./install.sh
     ```
 
-3.  **Start the streaming server:**
+3.  **Reboot the system:**
+    A reboot is recommended to ensure all system changes are applied.
+    ```bash
+    sudo reboot
+    ```
+
+4.  **Start the streaming server:**
+    After rebooting, the service should start automatically. You can also start it manually:
     ```bash
     ./start_stream.sh
     ```
-    You can view the server logs with `journalctl -u webrtc_stream.service -f`.
-
-    Or run as a systemd service:
+    Or control the systemd service:
     ```bash
     sudo systemctl start webrtc_stream.service
     ```
 
-4.  **Access Your Stream:**
+5.  **Access Your Stream:**
     -   Find your Raspberry Pi's IP address: `hostname -I`
     -   Open a web browser on another device on the same network and go to `http://<YOUR_PI_IP>:8080`.
     -   Click "Start" to begin streaming.
@@ -61,20 +66,29 @@ This server uses a modern and efficient pipeline for streaming:
 
 ## Configuration
 
-The server can be configured by editing the `config.ini` file. The default settings are:
+The server is configured by editing the `CONFIG` dictionary at the top of the `enhanced_server.py` script.
 
-```ini
-[camera]
-width = 640
-height = 480
-fps = 20
-
-[network]
-host = 0.0.0.0
-port = 8080
-
-[logging]
-level = INFO
+```python
+# Ultra-low latency configuration
+CONFIG = {
+    "width": 320,           # Ultra-low latency resolution
+    "height": 240,          # Ultra-low latency resolution
+    "fps": 60,              # Higher FPS for smoother streaming
+    "quality": 75,          # Lower quality for speed
+    "sharpness": 1.0,
+    "contrast": 1.0,
+    "saturation": 1.0,
+    "brightness": 0.0,
+    "denoise": "cdn_off",   # Disable denoise for speed
+    "host": "0.0.0.0",
+    "port": 8080,
+    "ice_servers": [
+        {"urls": "stun:stun.l.google.com:19302"},
+        {"urls": "stun:stun1.l.google.com:19302"}
+    ],
+    "queue_size": 1,        # Minimal queue for lowest latency
+    "low_latency": True,
+}
 ```
 
 ## Development
