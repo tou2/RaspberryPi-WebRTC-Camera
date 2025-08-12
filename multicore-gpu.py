@@ -13,7 +13,6 @@ import multiprocessing
 import queue
 import os
 from typing import Set, Optional
-from collections import deque
 import cv2
 from aiohttp import web, web_runner
 from aiortc import (
@@ -66,6 +65,35 @@ frame_queue = queue.Queue(maxsize=CONFIG["queue_size"])
 camera_process = None
 camera_thread = None
 camera_running = False
+
+def test_camera_availability():
+    """Test if camera is available and rpicam-vid works"""
+    try:
+        # Test if rpicam-vid is available
+        result = subprocess.run(["which", "rpicam-vid"], capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error("rpicam-vid not found. Please install rpicam-apps:")
+            logger.error("sudo apt update && sudo apt install -y rpicam-apps")
+            return False
+            
+        # Test camera detection
+        result = subprocess.run(["rpicam-vid", "--list-cameras"], 
+                              capture_output=True, text=True, timeout=5)
+        if "No cameras available" in result.stdout:
+            logger.error("No camera detected. Please check:")
+            logger.error("1. Camera is properly connected")
+            logger.error("2. Camera is enabled in raspi-config")
+            logger.error("3. Using official Raspberry Pi camera")
+            return False
+            
+        logger.info("Camera test successful")
+        return True
+    except subprocess.TimeoutExpired:
+        logger.error("Camera test timed out")
+        return False
+    except Exception as e:
+        logger.error(f"Camera test failed: {e}")
+        return False
 
 def camera_reader():
     """Pi 5 hardware-optimized camera reader with H.264 encoding."""
@@ -140,14 +168,17 @@ def setup_camera_process():
         camera_process = subprocess.Popen(
             rpicam_cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,  # Capture stderr for debugging
             bufsize=1024*1024  # 1MB buffer
         )
         
-        # Wait for process to start
-        time.sleep(0.2)
+        # Wait for process to start and check for errors
+        time.sleep(0.5)
         if camera_process.poll() is not None:
-            raise RuntimeError("Camera process failed to start")
+            # Process failed, get error output
+            stderr_output = camera_process.stderr.read().decode('utf-8', errors='ignore')
+            logger.error(f"Camera process failed to start. Error output: {stderr_output}")
+            raise RuntimeError(f"Camera process failed to start: {stderr_output}")
             
         logger.info("Pi 5 hardware encoder started successfully")
         
@@ -193,6 +224,10 @@ def read_h264_nal_unit(stream):
 def start_camera():
     """Start Pi 5 hardware-optimized camera capture."""
     global camera_thread, camera_running
+    
+    # Test camera availability first
+    if not test_camera_availability():
+        raise RuntimeError("Camera not available or rpicam-vid not installed")
     
     camera_running = True
     setup_camera_process()
@@ -802,6 +837,11 @@ async def main():
     logger.info(f"Configuration: {CONFIG}")
     logger.info(f"Available CPU cores: {multiprocessing.cpu_count()}")
     logger.info("Optimized for official Raspberry Pi camera modules")
+    
+    # Test camera before starting
+    if not test_camera_availability():
+        logger.error("Camera setup failed. Please check camera connection and rpicam-apps installation.")
+        return
     
     server = Pi5HardwareWebRTCServer()
     await server.start_server()
