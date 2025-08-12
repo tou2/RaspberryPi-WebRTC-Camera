@@ -166,7 +166,7 @@ def read_h264_nal_unit(stream):
     # Find first start code
     while True:
         data = stream.read(4096)
-        if not 
+        if not data:
             return None
         buffer += data
         start_idx = buffer.find(start_code)
@@ -183,7 +183,7 @@ def read_h264_nal_unit(stream):
             return nal_unit
         
         data = stream.read(4096)
-        if not 
+        if not data:
             # Return what we have if stream ends
             if buffer:
                 return start_code + buffer
