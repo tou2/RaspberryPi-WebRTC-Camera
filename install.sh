@@ -208,138 +208,24 @@ EOF
 
 chmod +x camera_test.sh
 
-print_section "Docker Installation (Optional)"
-
-# Ask user if they want to install Docker
-echo ""
-read -p "Do you want to install Docker for container deployment? (y/N): " install_docker
-
-if [[ $install_docker =~ ^[Yy]$ ]]; then
-    print_status "Installing Docker..."
-    
-    # Install Docker using the official script
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sudo sh get-docker.sh
-    
-    # Add current user to docker group
-    sudo usermod -aG docker $USER
-    
-    # Install Docker Compose
-    print_status "Installing Docker Compose..."
-    sudo apt-get install -y docker-compose
-    
-    # Enable Docker service
-    sudo systemctl enable docker
-    sudo systemctl start docker
-    
-    # Create docker-compose.yml if it doesn't exist
-    if [ ! -f docker-compose.yml ]; then
-        print_status "Creating docker-compose.yml..."
-        cat > docker-compose.yml << 'EOF'
-version: '3.8'
-services:
-  webrtc-camera:
-    build: .
-    ports:
-      - "8080:8080"
-    devices:
-      - /dev/video0:/dev/video0
-    volumes:
-      - ./config.ini:/app/config.ini:ro
-    environment:
-      - PYTHONUNBUFFERED=1
-    restart: unless-stopped
-    privileged: true
-EOF
-    fi
-    
-    # Create Dockerfile if it doesn't exist
-    if [ ! -f Dockerfile ]; then
-        print_status "Creating Dockerfile..."
-        cat > Dockerfile << 'EOF'
-FROM python:3.9-slim
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    pkg-config \
-    libavcodec-dev \
-    libavformat-dev \
-    libswscale-dev \
-    libopus-dev \
-    libvpx-dev \
-    libsrtp2-dev \
-    rpicam-apps \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set working directory
-WORKDIR /app
-
-# Copy requirements first for better caching
-COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY . .
-
-# Expose port
-EXPOSE 8080
-
-# Run the server
-CMD ["python3", "enhanced_server.py"]
-EOF
-    fi
-    
-    print_status "Docker installation complete!"
-    print_status "You can now use Docker deployment with:"
-    print_status "  docker-compose up --build -d"
-    echo ""
-    print_warning "Note: You'll need to log out and back in for Docker group membership to take effect."
-    echo ""
-else
-    print_status "Skipping Docker installation."
-fi
-
 print_section "Installation Complete!"
 
 print_status "All dependencies have been installed successfully!"
 echo ""
-
-if [[ $install_docker =~ ^[Yy]$ ]]; then
-    echo "Deployment options:"
-    echo ""
-    echo "${BLUE}Option 1: Native Python (Recommended for Pi Zero W)${NC}"
-    echo "1. Reboot your Pi: ${GREEN}sudo reboot${NC}"
-    echo "2. Start the stream: ${GREEN}./start_stream.sh${NC}"
-    echo ""
-    echo "${BLUE}Option 2: Docker Container${NC}"
-    echo "1. Reboot your Pi: ${GREEN}sudo reboot${NC}"
-    echo "2. Start with Docker: ${GREEN}docker-compose up --build -d${NC}"
-    echo "3. View logs: ${GREEN}docker-compose logs -f${NC}"
-    echo ""
-    echo "4. Open a web browser and navigate to:"
-    echo "   ${GREEN}http://[PI_IP_ADDRESS]:8080${NC}"
-    echo ""
-    echo "5. Click 'Start Stream' to begin streaming!"
-else
-    echo "Next steps:"
-    echo "1. Reboot your Pi to apply camera settings:"
-    echo "   ${GREEN}sudo reboot${NC}"
-    echo ""
-    echo "2. After reboot, start the stream:"
-    echo "   ${GREEN}./start_stream.sh${NC}"
-    echo ""
-    echo "   Or start as a service:"
-    echo "   ${GREEN}sudo systemctl start webrtc_stream.service${NC}"
-    echo ""
-    echo "3. Open a web browser and navigate to:"
-    echo "   ${GREEN}http://[PI_IP_ADDRESS]:8080${NC}"
-    echo ""
-    echo "4. Click 'Start Stream' to begin streaming!"
-fi
+echo "Next steps:"
+echo "1. Reboot your Pi to apply camera settings:"
+echo "   ${GREEN}sudo reboot${NC}"
+echo ""
+echo "2. After reboot, start the stream:"
+echo "   ${GREEN}./start_stream.sh${NC}"
+echo ""
+echo "   Or start as a service:"
+echo "   ${GREEN}sudo systemctl start webrtc_stream.service${NC}"
+echo ""
+echo "3. Open a web browser and navigate to:"
+echo "   ${GREEN}http://[PI_IP_ADDRESS]:8080${NC}"
+echo ""
+echo "4. Click 'Start Stream' to begin streaming!"
 
 echo ""
 echo "Useful commands:"
@@ -348,14 +234,6 @@ echo "  - Stop service: ${GREEN}./stop_stream.sh${NC}"
 echo "  - Check service status: ${GREEN}sudo systemctl status webrtc_stream.service${NC}"
 echo "  - View logs: ${GREEN}sudo journalctl -u webrtc_stream.service -f${NC}"
 echo "  - Test camera: ${GREEN}./camera_test.sh${NC}"
-
-if [[ $install_docker =~ ^[Yy]$ ]]; then
-    echo ""
-    echo "  ${BLUE}Docker Commands:${NC}"
-    echo "  - Start container: ${GREEN}docker-compose up --build -d${NC}"
-    echo "  - View logs: ${GREEN}docker-compose logs -f${NC}"
-    echo "  - Stop container: ${GREEN}docker-compose down${NC}"
-fi
 
 echo ""
 print_warning "If camera issues persist after reboot, run: ./camera_test.sh"
