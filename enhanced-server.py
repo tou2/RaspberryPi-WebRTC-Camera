@@ -70,7 +70,7 @@ def camera_reader():
                 
             # Read data from camera process (smaller chunks for responsiveness)
             data = camera_process.stdout.read(2048)
-            if not 
+            if not data:
                 continue
                 
             buffer += data
