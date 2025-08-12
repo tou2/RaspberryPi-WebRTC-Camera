@@ -131,7 +131,6 @@ def setup_camera_process():
             "--profile", CONFIG["profile"],       # H.264 profile
             "--level", CONFIG["level"],           # H.264 level
             "--intra", str(CONFIG["fps"]),        # Keyframe every second
-            "--qp", "23",                        # Quantization parameter
             "--codec", "h264",                   # H.264 encoding
             "--flush",                          # Immediate flush for low latency
             "--inline",                         # Inline headers
