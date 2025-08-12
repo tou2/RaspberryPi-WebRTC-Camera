@@ -1,8 +1,8 @@
-﻿# 🚀 Pi WebRTC Camera Stream
+﻿# Pi WebRTC Camera Stream
 
 A simple, low-latency WebRTC video streaming server for Raspberry Pi, optimized for the Raspberry Pi Camera Module v3 and newer.
 
-## ✨ Key Features
+## Key Features
 
 -   **Low Latency**: Streams video directly to your web browser with minimal delay.
 -   **Raspberry Pi Optimized**: Specifically designed to work with `rpicam-vid` for efficient, hardware-accelerated video capture on modern Raspberry Pi boards (Bullseye OS or newer).
@@ -10,7 +10,7 @@ A simple, low-latency WebRTC video streaming server for Raspberry Pi, optimized 
 -   **Web-Based UI**: A clean web interface allows you to start, stop, and control the stream.
 -   **Simple & Self-Contained**: Everything is in a single Python script (`enhanced_server.py`) using `aiohttp` and `aiortc`. No complex dependencies.
 
-## 📋 Requirements
+## Requirements
 
 -   **Hardware**:
     -   A Raspberry Pi (Pi Zero 2 W, Pi 3, 4, or 5 recommended).
@@ -20,7 +20,7 @@ A simple, low-latency WebRTC video streaming server for Raspberry Pi, optimized 
     -   Python 3.
     -   `rpicam-apps` installed (`sudo apt install rpicam-apps`).
 
-## 🚀 Quick Start
+## Quick Start
 
 1.  **Clone the repository:**
     ```bash
@@ -51,7 +51,7 @@ A simple, low-latency WebRTC video streaming server for Raspberry Pi, optimized 
     -   Open a web browser on another device on the same network and go to `http://<YOUR_PI_IP>:8080`.
     -   Click "Start" to begin streaming.
 
-## ⚙️ How It Works
+## How It Works
 
 This server uses a modern and efficient pipeline for streaming:
 
@@ -59,7 +59,7 @@ This server uses a modern and efficient pipeline for streaming:
 2.  **Python `subprocess`**: The Python server runs `rpicam-vid` as a subprocess and reads the MJPEG video data directly from its standard output pipe.
 3.  **`aiortc`**: The Python script handles the WebRTC signaling and connection. When a frame is requested by the client, it reads the latest complete MJPEG frame from the pipe, decodes it, and sends it over the peer connection.
 
-## 🛠️ Configuration
+## Configuration
 
 The server can be configured by editing the `config.ini` file. The default settings are:
 
@@ -77,7 +77,7 @@ port = 8080
 level = INFO
 ```
 
-## 🛠️ Development
+## Development
 
 To run the server directly for development without installing the service:
 
