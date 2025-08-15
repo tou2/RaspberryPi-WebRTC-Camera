@@ -6,7 +6,7 @@
 set -e  # Exit on any error
 
 echo "=================================================="
-echo "🚀 WebRTC Camera Setup Script for Raspberry Pi 🚀"
+echo "WebRTC Camera Setup Script for Raspberry Pi"
 echo "=================================================="
 
 # Colors for output
@@ -53,8 +53,8 @@ sudo apt-get upgrade -y
 
 print_section "Installing System Dependencies"
 
-# Essential system packages
-print_status "Installing essential system packages..."
+# Install system dependencies
+print_status "Installing system dependencies..."
 sudo apt-get install -y \
     python3 \
     python3-pip \
@@ -69,7 +69,18 @@ sudo apt-get install -y \
     libopus-dev \
     libvpx-dev \
     libsrtp2-dev \
-    rpicam-apps
+    rpicam-apps \
+    i2c-tools \
+    python3-smbus
+
+print_section "I2C Configuration"
+print_status "Enabling I2C interface..."
+if ! grep -q "dtparam=i2c_arm=on" /boot/config.txt; then
+    echo "dtparam=i2c_arm=on" | sudo tee -a /boot/config.txt
+    print_status "I2C enabled. A reboot is required."
+else
+    print_status "I2C is already enabled."
+fi
 
 print_section "Camera Configuration"
 
@@ -115,6 +126,7 @@ EOF
 # Install Python packages
 print_status "Installing Python packages (this may take a while)..."
 pip install -r requirements.txt
+pip install smbus2
 
 print_section "Service Configuration"
 
@@ -130,7 +142,7 @@ Wants=network.target
 Type=simple
 User=$USER
 WorkingDirectory=$(pwd)
-ExecStart=$(pwd)/venv/bin/python enhanced_server.py
+ExecStart=$(pwd)/venv/bin/python main.py
 Restart=always
 RestartSec=10
 
@@ -172,7 +184,7 @@ cat > start_stream.sh << 'EOF'
 #!/bin/bash
 cd "$(dirname "$0")"
 source venv/bin/activate
-python3 enhanced_server.py
+python3 main.py
 EOF
 
 chmod +x start_stream.sh

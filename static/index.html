@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Ultra-Low Latency Pi Camera WebRTC Stream</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <div class="header-container">
+        <h1>Ultra-Low Latency Pi Camera Stream</h1>
+        <div id="batteryContainer" class="battery-container" style="display: none;">
+            <div id="batteryIcon" class="battery-icon"></div>
+            <div class="battery-bar">
+                <div id="batteryBarFill" class="battery-bar-fill"></div>
+            </div>
+            <div id="batteryLevel" class="battery-level"></div>
+        </div>
+    </div>
+
+    <div class="settings">
+        <div class="setting-group">
+            <label for="latencyMode">Mode:</label>
+            <select id="latencyMode">
+                <option value="ultra" selected>Ultra-Low Latency (320x240@60fps)</option>
+                <option value="low">Low Latency (640x480@30fps)</option>
+                <option value="balanced">Balanced</option>
+                <option value="quality">High Quality</option>
+            </select>
+        </div>
+
+        <div class="setting-group">
+            <label for="resolution">Res:</label>
+            <select id="resolution">
+                <option value="320,240" selected>320x240</option>
+                <option value="640,480">640x480</option>
+                <option value="800,600">800x600</option>
+                <option value="1280,720">1280x720</option>
+            </select>
+        </div>
+
+        <div class="setting-group">
+            <label for="fps">FPS:</label>
+            <select id="fps">
+                <option value="15">15 FPS</option>
+                <option value="30">30 FPS</option>
+                <option value="60" selected>60 FPS</option>
+                <option value="90">90 FPS</option>
+            </select>
+        </div>
+
+        <div class="setting-group">
+            <label for="quality">Quality:</label>
+            <input type="range" id="quality" min="50" max="100" value="75">
+            <span id="qualityValue" class="value-display">75</span>
+        </div>
+    </div>
+
+    <button onclick="toggleAdvancedSettings()" style="margin-bottom: 10px;">Advanced Settings</button>
+
+    <div class="advanced-settings" id="advancedSettings">
+        <h3>Advanced Camera Settings</h3>
+        <div class="advanced-controls">
+            <div class="advanced-control">
+                <label>Sharpness:</label>
+                <input type="range" id="sharpness" min="0" max="200" value="100">
+                <span id="sharpnessValue" class="value-display">1.0</span>
+            </div>
+
+            <div class="advanced-control">
+                <label>Contrast:</label>
+                <input type="range" id="contrast" min="0" max="200" value="100">
+                <span id="contrastValue" class="value-display">1.0</span>
+            </div>
+
+            <div class="advanced-control">
+                <label>Saturation:</label>
+                <input type="range" id="saturation" min="0" max="200" value="100">
+                <span id="saturationValue" class="value-display">1.0</span>
+            </div>
+
+            <div class="advanced-control">
+                <label>Brightness:</label>
+                <input type="range" id="brightness" min="0" max="200" value="100">
+                <span id="brightnessValue" class="value-display">0.0</span>
+            </div>
+
+            <button onclick="resetAdvancedSettings()">Reset</button>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button id="startBtn" onclick="start()">Start Stream</button>
+        <button id="stopBtn" onclick="stop()" disabled>Stop Stream</button>
+        <button id="fullscreenBtn" onclick="toggleFullScreen()" disabled>Fullscreen</button>
+        <button id="rotateBtn" onclick="rotate()" disabled>Rotate</button>
+        <button id="snapshotBtn" onclick="takeSnapshot()" disabled>Snapshot</button>
+    </div>
+
+    <div id="status" class="status disconnected">Disconnected</div>
+
+    <video id="video" autoplay playsinline muted></video>
+
+    <div id="stats" class="stats">
+        <div>Connection State: <span id="connectionState">-</span></div>
+        <div>ICE Connection State: <span id="iceConnectionState">-</span></div>
+        <div>Bytes Received: <span id="bytesReceived">-</span></div>
+        <div>Packets Received: <span id="packetsReceived">-</span></div>
+        <div>Packets Lost: <span id="packetsLost">-</span></div>
+        <div>Frame Rate: <span id="frameRate">-</span></div>
+        <div>Resolution: <span id="resolutionInfo">-</span></div>
+        <div>Latency: <span id="latency">-</span> ms</div>
+    </div>
+
+    <script src="/static/client.js"></script>
+</body>
+
+</html>
